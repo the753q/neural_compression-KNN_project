@@ -11,6 +11,8 @@ except ImportError:
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DATASETS_DIR = PROJECT_DIR / "datasets"
+COLAB_DRIVE_ROOT = Path("/content/drive/MyDrive")
+GOOGLE_DRIVE_DATASETS_DIR = Path("/content/drive/MyDrive/datasets_compression")
 IMAGE_SUFFIXES = ("*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp")
 
 
@@ -47,6 +49,17 @@ def _ensure_directory(directory):
     directory.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_datasets_dir(is_colab=False):
+    if is_colab:
+        if not COLAB_DRIVE_ROOT.exists():
+            raise RuntimeError(
+                "Google Drive is not mounted. Mount it before calling "
+                "retrieve_dataset(..., is_colab=True)."
+            )
+        return GOOGLE_DRIVE_DATASETS_DIR
+    return DATASETS_DIR
+
+
 def _missing_dataset_message(dataset_name, kaggle_link, expected_path):
     return (
         f"{dataset_name} was not found.\n"
@@ -58,10 +71,18 @@ def _missing_dataset_message(dataset_name, kaggle_link, expected_path):
 class Kodak24DataModule(pl.LightningDataModule):
     KAGGLE_LINK = "https://www.kaggle.com/datasets/drxinchengzhu/kodak24"
 
-    def __init__(self, batch_size=1, num_workers=0, max_images=None, data_dir=None):
+    def __init__(
+        self,
+        batch_size=1,
+        num_workers=0,
+        max_images=None,
+        data_dir=None,
+        is_colab=False,
+    ):
         super().__init__()
+        self.datasets_dir = _resolve_datasets_dir(is_colab)
         self.data_dir = (
-            Path(data_dir) if data_dir is not None else DATASETS_DIR / "Kodak24"
+            Path(data_dir) if data_dir is not None else self.datasets_dir / "Kodak24"
         )
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -70,7 +91,7 @@ class Kodak24DataModule(pl.LightningDataModule):
         self.missing_message = None
 
     def prepare_data(self):
-        _ensure_directory(DATASETS_DIR)
+        _ensure_directory(self.datasets_dir)
         _ensure_directory(self.data_dir)
 
         image_paths = _collect_image_paths(self.data_dir)
@@ -123,10 +144,12 @@ class ImageNetDataModule(pl.LightningDataModule):
         max_train_images=None,
         max_val_images=None,
         data_dir=None,
+        is_colab=False,
     ):
         super().__init__()
+        self.datasets_dir = _resolve_datasets_dir(is_colab)
         self.data_dir = (
-            Path(data_dir) if data_dir is not None else DATASETS_DIR / "ImageNet"
+            Path(data_dir) if data_dir is not None else self.datasets_dir / "ImageNet"
         )
         self.train_dir = self.data_dir / "train"
         self.val_dir = self.data_dir / "val"
@@ -139,7 +162,7 @@ class ImageNetDataModule(pl.LightningDataModule):
         self.missing_message = None
 
     def prepare_data(self):
-        _ensure_directory(DATASETS_DIR)
+        _ensure_directory(self.datasets_dir)
         _ensure_directory(self.data_dir)
         _ensure_directory(self.train_dir)
         _ensure_directory(self.val_dir)
@@ -201,6 +224,7 @@ def retrieve_dataset(
     batch_size=1,
     num_workers=0,
     data_dir=None,
+    is_colab=False,
     max_images=None,
     max_train_images=None,
     max_val_images=None,
@@ -213,6 +237,7 @@ def retrieve_dataset(
             num_workers=num_workers,
             max_images=max_images,
             data_dir=data_dir,
+            is_colab=is_colab,
         )
     elif dataset_name == "imagenet":
         datamodule = ImageNetDataModule(
@@ -221,6 +246,7 @@ def retrieve_dataset(
             max_train_images=max_train_images or max_images,
             max_val_images=max_val_images or max_images,
             data_dir=data_dir,
+            is_colab=is_colab,
         )
     else:
         raise ValueError(f"Dataset '{dataset_name}' not implemented")
