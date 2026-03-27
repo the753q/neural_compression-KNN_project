@@ -48,7 +48,7 @@ def _ensure_directory(directory):
 
 
 def _missing_dataset_message(dataset_name, kaggle_link, expected_path):
-    raise FileNotFoundError(
+    return (
         f"{dataset_name} was not found.\n"
         f"Download it from: {kaggle_link}\n"
         f"Extract it into: {expected_path}"
@@ -67,6 +67,7 @@ class Kodak24DataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.max_images = max_images
         self.dataset = None
+        self.missing_message = None
 
     def prepare_data(self):
         _ensure_directory(DATASETS_DIR)
@@ -74,7 +75,13 @@ class Kodak24DataModule(pl.LightningDataModule):
 
         image_paths = _collect_image_paths(self.data_dir)
         if not image_paths:
-            _missing_dataset_message("Kodak24", self.KAGGLE_LINK, self.data_dir)
+            self.missing_message = _missing_dataset_message(
+                "Kodak24", self.KAGGLE_LINK, self.data_dir
+            )
+            return False
+
+        self.missing_message = None
+        return True
 
     def setup(self, stage=None):
         image_paths = _collect_image_paths(self.data_dir)
@@ -129,6 +136,7 @@ class ImageNetDataModule(pl.LightningDataModule):
         self.max_val_images = max_val_images
         self.train_dataset = None
         self.val_dataset = None
+        self.missing_message = None
 
     def prepare_data(self):
         _ensure_directory(DATASETS_DIR)
@@ -137,14 +145,19 @@ class ImageNetDataModule(pl.LightningDataModule):
         _ensure_directory(self.val_dir)
 
         if not _collect_image_paths(self.train_dir, recursive=True):
-            _missing_dataset_message(
+            self.missing_message = _missing_dataset_message(
                 "ImageNet train split", self.KAGGLE_LINK, self.train_dir
             )
+            return False
 
         if not _collect_image_paths(self.val_dir, recursive=True):
-            _missing_dataset_message(
+            self.missing_message = _missing_dataset_message(
                 "ImageNet validation split", self.KAGGLE_LINK, self.val_dir
             )
+            return False
+
+        self.missing_message = None
+        return True
 
     def setup(self, stage=None):
         train_images = _limit_image_paths(
@@ -212,6 +225,8 @@ def retrieve_dataset(
     else:
         raise ValueError(f"Dataset '{dataset_name}' not implemented")
 
-    datamodule.prepare_data()
+    dataset_ready = datamodule.prepare_data()
     datamodule.setup()
+    if not dataset_ready and datamodule.missing_message is not None:
+        print(datamodule.missing_message)
     return datamodule
