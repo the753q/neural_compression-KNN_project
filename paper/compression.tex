@@ -1,0 +1,87 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{Image Compression Using Neural Networks}
+
+\author{Tomáš Macák \\
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{name of organization (of Aff.)}\\
+City, Country \\
+email address or ORCID}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{name of organization (of Aff.)}\\
+City, Country \\
+email address or ORCID}
+\and
+\IEEEauthorblockN{3\textsuperscript{rd} Given Name Surname}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{name of organization (of Aff.)}\\
+City, Country \\
+email address or ORCID}
+}
+
+\maketitle
+
+% \begin{abstract}
+
+% \end{abstract}
+
+\begin{IEEEkeywords}
+image compression, neural networks
+\end{IEEEkeywords}
+
+
+\section{Abstract}
+Neural networks can achieve high levels of compression by "understanding" the image structure and producing very efficient coding. We aim to employ Convolutional Autoencoders (AE) to extract the bottleneck weights as the compressed representation.
+
+
+\section{Introduction}
+Compression is when big image go small \cite{deshmukh_image_2019} \cite{ivanova_image_2022}.
+
+
+\section{Methodology}
+
+
+
+\section{Work Overview}
+compression:
+Image -> CAE -> quantization -> entropy coding -> Compressed format
+decompression/recovery:
+Compressed format -> entropy decoding -> CAE -> Image
+
+Input image split into patches e.g 128x128 [1]
+Loss:
+MSE [1], Model-derived loss [3]
+Training:
+Modern gaming GPU or Google Colab should suffice. [1]
+
+\subsection{Maintaining the Integrity of the Specifications}
+
+
+
+\section{Source Code}
+The implementation can be accessed from a public GitHub repository at 
+\url{https://github.com/the753q/neural_compression-KNN_project}.
+
+
+\twocolumn[
+\begin{@twocolumnfalse}
+
+\bibliographystyle{IEEEtran}
+\bibliography{paper/KNN_compression.bib}
+
+\end{@twocolumnfalse}
+]
+
+\end{document}
