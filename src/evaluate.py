@@ -5,24 +5,21 @@ import torch.nn.functional as F
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
 
-from data import ImageNetSubsetDataModule
+from data import ImageNetSubsetDataModule, ImageNet10KDataModule
 from models import get_model
 
 MODEL = "basic"
 CKPT = "checkpoints/basic-best.ckpt"
-DATA_DIR = "datasets/imagenet-mini"
-IMAGE_SIZE = 256
+DATA_DIR = "../datasets/imagenet_10k"
 NUM_IMAGES = 8
 
 
 def main():
     os.makedirs("outputs", exist_ok=True)
 
-    datamodule = ImageNetSubsetDataModule(
+    datamodule = ImageNet10KDataModule(
         data_dir=DATA_DIR,
-        batch_size=NUM_IMAGES,
-        image_size=IMAGE_SIZE,
-        val_limit=100
+        batch_size=NUM_IMAGES
     )
     datamodule.setup()
     val_loader = datamodule.val_dataloader()
