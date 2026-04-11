@@ -5,6 +5,7 @@ attrs==26.1.0
 cuda-bindings==13.2.0
 cuda-pathfinder==1.5.2
 cuda-toolkit==13.0.2
+dahuffman==0.4.2
 filelock==3.25.2
 frozenlist==1.8.0
 fsspec==2026.3.0

@@ -41,7 +41,31 @@ def non_overlaping_patches(img):
 
     return patches
 
+def quantize_tensor(tensor):
+    """
+        Quantizes tensor using IQR.
+        Returns:
+            tuple: (quantized, reversed)
+    """
+    q25 = torch.quantile(tensor, 0.25)
+    q75 = torch.quantile(tensor, 0.75)
+    iqr = q75 - q25
+    low  = q25 - 1.5 * iqr
+    high = q75 + 1.5 * iqr
+
+    tensor = tensor.clamp(low, high) # clamp
+    tensor = (tensor - low) / (high - low) # normalize
+
+    tensor_u8 = (tensor * 255).round().to(torch.uint8)
+
+    tensor_rec = (tensor_u8.to(torch.float) / 255.0) * (high - low) + low
+
+    return (tensor_u8, tensor_rec)
+
+    
 def eval_compression():
+    FILE = "../datasets/misc/div2k_greece.png"
+
     img = Image.open("../datasets/misc/div2k_greece.png").convert("RGB")
     patches =  non_overlaping_patches(img)
 
@@ -57,10 +81,34 @@ def eval_compression():
     from torchvision import transforms
 
     transform = transforms.ToTensor()
-    batch = torch.stack([transform(patch) for _, patch in patches]).to(device)
+    patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(device)
 
+    quantized_tensor = None
     with torch.no_grad():
-        reconstructions = model(batch)
+        bottleneck = model.encoder(patches_batch)
+
+        quantized_tensor, tensor_reconstructed = quantize_tensor(bottleneck)
+
+        reconstructions = model.decoder(tensor_reconstructed)
+
+    # compare compression
+    import io
+    buf_img = io.BytesIO()
+    img.save(buf_img, format="PNG")
+
+    import dahuffman
+    codec = dahuffman.HuffmanCodec.from_data(quantized_tensor.flatten().tolist())
+    encoded = codec.encode(quantized_tensor.flatten().tolist())
+    buf_compressed = io.BytesIO(encoded)
+
+    img_size = buf_img.tell()
+    compressed_size = buf_compressed.getbuffer().nbytes
+    ratio = img_size / compressed_size
+
+    print("-"*45)
+    print(f"File: {FILE}, size: {img.size[0]}x{img.size[1]}")
+    print(f"{'Size before':>15} | {'Size after':>15} | {'Compression ratio':>15}")
+    print(f"{img_size//1024:>12} KB | {compressed_size//1024:>12} KB | {ratio:>15.2f}x")
 
     reconstructed = Image.new("RGB", img.size)
     for i, (x, y) in enumerate(pos for pos, _ in patches):
