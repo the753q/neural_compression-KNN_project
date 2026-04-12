@@ -10,7 +10,6 @@ import io
 from torchvision import transforms
 import dahuffman
 
-
 from data import ImageNetSubsetDataModule, ClassImagesDataModule, Div2KDataModule, ConcatDatasetsDataModule
 
 from models import get_model
@@ -158,12 +157,13 @@ def eval_compression(model_name, model_checkpoint, datamodule):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    img_comp_metrics = ImageComparisonMetrics()
+    img_comp_metrics_ours = ImageComparisonMetrics()
+    img_comp_metrics_jpeg = ImageComparisonMetrics()
     img_patcher = ImagePatcher()
 
     N_IMAGES = 4
     print("="*45)
-    print(f"{"i"}\t{'Image size'}\t{'Size before'}\t{'Size after'}\t{'ratio'}")
+    print(f"{"i"}\t{'Image size'}\t{'Size before'}\t{'Size after'}\t{'ratio'}\t{'jpeg_ratio'}")
     print("="*45)
     for i, batch_tensor in enumerate(val_loader):
         if i+1 > N_IMAGES:
@@ -196,17 +196,29 @@ def eval_compression(model_name, model_checkpoint, datamodule):
         compressed_size = buf_compressed.getbuffer().nbytes
         ratio = img_size / compressed_size
 
-        print(f"{i}\t{img.size[0]}x{img.size[1]}\t{img_size//1024} KB \t{compressed_size//1024} KB \t{ratio:>15.2f}x")
+        buf_jpeg = io.BytesIO()
+        img.save(buf_jpeg, format="JPEG", quality=95)
+        jpeg_size = buf_jpeg.tell()
+        buf_jpeg.seek(0)
+        jpeg_img = Image.open(buf_jpeg)
+
+        jpeg_ratio = img_size/jpeg_size
+
+        print(f"{i}\t{img.size[0]}x{img.size[1]}\t{img_size//1024} KB \t{compressed_size//1024} KB \t{ratio:>15.2f}x \t {jpeg_ratio:>15.2}x")
 
         reconstructed = img_patcher.combine_patches(img.size,
                         [(x,y) for (x,y), _ in patches],
                         [transforms.ToPILImage()(r.cpu()) for r in reconstructions])
 
-        img_comp_metrics.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+        img_comp_metrics_ours.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+        img_comp_metrics_jpeg.update(transform(img).unsqueeze(0), transform(jpeg_img).unsqueeze(0))
 
         reconstructed.save(f"{OUTPUT_DIR}/{model_checkpoint.replace("/", "_")}_{i}_reconstructed.png")
 
-    img_comp_metrics.print_summary()
+    print("\nOur comparison metrics:")
+    img_comp_metrics_ours.print_summary()
+    print("\nJPEG comparison metrics:")
+    img_comp_metrics_jpeg.print_summary()
 
 def eval_patches(model_name, model_checkpoint, datamodule):
     datamodule.setup()
