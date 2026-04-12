@@ -261,11 +261,11 @@ def eval_patches(model_name, model_checkpoint, datamodule):
  
 def main():
     os.makedirs("outputs", exist_ok=True)
-    eval_patches("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_default_imagenet10k)
-    eval_compression("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_no_crop_imagenet10k)
+    #eval_patches("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_default_imagenet10k)
+    #eval_compression("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_no_crop_imagenet10k)
     
-    # eval_patches("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_default_concat)
-    # eval_compression("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_no_crop_concat)
+    eval_patches("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_default_concat)
+    eval_compression("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_no_crop_concat)
 
 if __name__ == "__main__":
     main()
