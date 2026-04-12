@@ -4,7 +4,11 @@ import torch
 import torch.nn.functional as F
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
+
 from PIL import Image, ImageOps
+import io
+from torchvision import transforms
+import dahuffman
 
 from data import ImageNetSubsetDataModule, ImageNet10KDataModule
 from models import get_model
@@ -24,7 +28,7 @@ class ImageComparisonMetrics:
         self.psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
         self.ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
         self.total_mse = 0.0
-        self.num_samples = 0
+        self.num_batches = 0
         self.finilized = False
 
     def update(self, reconstruction, original):
@@ -32,10 +36,10 @@ class ImageComparisonMetrics:
         self.total_mse += F.mse_loss(reconstruction, original).item()
         self.psnr_metric.update(reconstruction, original)
         self.ssim_metric.update(reconstruction, original)
-        self.num_samples += 1
+        self.num_batches += 1
 
     def finilize(self):
-        self.avg_mse = self.total_mse / self.num_samples
+        self.avg_mse = self.total_mse / self.num_batches
         self.avg_psnr = self.psnr_metric.compute()
         self.avg_ssim = self.ssim_metric.compute()
         self.finilized = True
@@ -44,7 +48,7 @@ class ImageComparisonMetrics:
         if not self.finilized:
             self.finilize()
         print("\n" + "=" * 30)
-        print(f"Total samples: {self.num_samples}")
+        print(f"Total batches: {self.num_batches}")
         print(f"MSE:  {self.avg_mse:.6f}")
         print(f"PSNR: {self.avg_psnr:.2f} dB")
         print(f"SSIM: {self.avg_ssim:.4f}")
@@ -56,8 +60,6 @@ def non_overlaping_patches(img):
         Returns:
             list: list of tuples ((x,y), image_data)
     """
-    img = Image.open("../datasets/misc/div2k_greece.png").convert("RGB")
-
     patch_size = 256
 
     # pad to create non-overlaping patches
@@ -98,9 +100,10 @@ def quantize_tensor(tensor):
     return (tensor_u8, tensor_rec)
   
 def eval_compression():
-    FILE = "../datasets/misc/div2k_greece.png"
+    # FILE = "../datasets/misc/div2k_greece.png"
+    FILE = "../datasets/misc/imagenet_birds.JPEG"
 
-    img = Image.open("../datasets/misc/div2k_greece.png").convert("RGB")
+    img = Image.open(FILE).convert("RGB")
     patches =  non_overlaping_patches(img)
 
     print(f"Loading {MODEL} from {CKPT}...")
@@ -112,10 +115,10 @@ def eval_compression():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    from torchvision import transforms
-
     transform = transforms.ToTensor()
     patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(device)
+
+    img_comp_metrics = ImageComparisonMetrics()
 
     quantized_tensor = None
     with torch.no_grad():
@@ -126,16 +129,12 @@ def eval_compression():
         reconstructions = model.decoder(tensor_reconstructed)
 
     # compare compression
-    import io
     buf_img = io.BytesIO()
     img.save(buf_img, format="PNG")
 
-    import dahuffman
     codec = dahuffman.HuffmanCodec.from_data(quantized_tensor.flatten().tolist())
     encoded = codec.encode(quantized_tensor.flatten().tolist())
     buf_compressed = io.BytesIO(encoded)
-
-    print(f"bottlneck size {len(quantized_tensor[0].flatten().tolist())}")
 
     img_size = buf_img.tell()
     compressed_size = buf_compressed.getbuffer().nbytes
@@ -150,6 +149,9 @@ def eval_compression():
     for i, (x, y) in enumerate(pos for pos, _ in patches):
         patch = transforms.ToPILImage()(reconstructions[i].cpu())
         reconstructed.paste(patch, (x, y))
+
+    img_comp_metrics.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+    img_comp_metrics.print_summary()
 
     reconstructed.save(f"{OUTPUT_DIR}/reconstructed.png")
 
