@@ -1,5 +1,8 @@
 *datasets/
 .idea/
+*lightning_logs/
+checkpoints/
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

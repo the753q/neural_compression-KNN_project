@@ -11,25 +11,29 @@ class Encoder(nn.Module):
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
         return x
 
 
 class Decoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.deconv1 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.deconv2 = nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.deconv3 = nn.ConvTranspose2d(16, 3, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.deconv1 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.deconv2 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.deconv3 = nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.deconv4 = nn.ConvTranspose2d(16, 3, kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, x):
         x = F.relu(self.deconv1(x))
         x = F.relu(self.deconv2(x))
-        x = torch.sigmoid(self.deconv3(x))
+        x = F.relu(self.deconv3(x))
+        x = torch.sigmoid(self.deconv4(x))
         return x
 
 

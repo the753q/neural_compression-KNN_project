@@ -6,7 +6,6 @@ from .base import BaseAutoencoder
 
 
 class DownBranch(nn.Module):
-
     def __init__(self, in_channels, out_channels, kernel_size):
         super().__init__()
         padding = kernel_size // 2
