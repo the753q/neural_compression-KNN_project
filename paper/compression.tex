@@ -13,10 +13,10 @@
 \title{Image Compression Using Neural Networks}
 
 \author{\IEEEauthorblockN{Tomáš Macák}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
+\IEEEauthorblockA{\textit{Faculty of Information Technology} \\
+\textit{Brno University of Technology}\\
+Brno, Czech Republic \\
+idk ci neostanu len mena}
 \and
 \IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
 \IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
@@ -57,14 +57,45 @@ no
 This section explains the structure of our work and the experiments conducted to evaluate its compression strength.
 
 \subsection{Implementation Details}
-For ease of use, we propose a harness that allows for seamless swapping of different compression architectures. The harness provides standardized dataset loading and preprocessing, while also providing evaluation capabilities.
+For ease of use, we propose a harness that allows for seamless swapping of different compression architectures. The harness provides standardized dataset loading and preprocessing while also providing evaluation capabilities.
+
+First, the $data.py$ file defines the various datasets we use, each as its own subclass of the PyTorch Lightning library $LightningDataModule$, achieving seamless integration within the main training code. Batch size and the number of workers for batch preparation are defined for each module. Additionally, we set whether we want the images to be scaled to a fixed size or cut into patches. By splitting each image into sub-parts, we allow the model to learn from more examples and prevent overfitting. Multiple datasets can be concatenated as well. Inside the class, we also define the separate train, test, and validation sets. 
+
+The $train.py$ file describes the main training pipeline, containing experiments that combine datasets with models. PyTorch Lightning then takes care of the training process.
+
+Models are built on top of a base autoencoder module in the $base.py$ file, implementing training and validation steps, all built on top of $LightningModule$. The concrete model architecture is then implemented in its own .py file, inheriting the $BaseAutoencoder$ class and usually implementing the encoder, decoder, and forward pass parts of the model.
+
+Evaluation is then performed via the $evaluate.py$ file, which loads dataset modules, compression metrics, and performs the compression and decompression of images with a specified trained model. 
+Each image is sliced into parts, with each part compressed individually. After subsequent decompression, the slices are merged together to reconstruct the original image. The slicing algorithm creates non-overlapping slices that, during compression, leave the model without the context of the surrounding area.
+
+During encoding, the model output is quantized, where outliers are clamped to an IQR range and normalized. The encoding is converted to 8-bit values.
+
+Decoding part of the process maps the 8-bit values back to the $[0, 1]$ range of the model, runs them through the decoder, and performs the stitching of the slices back into a single image.
+
+Based on the decompressed image, MSE, PSNR, and SSIM statistics are calculated.
 
 \subsection{Model Architecture}
-tbd
+The proposed model is a convolutional autoencoder consisting of two symmetric subnetworks: an encoder that progressively compresses the input into a compact latent representation, and a decoder that reconstructs the original input from that representation. The full model, \texttt{BasicAE}, is implemented as a PyTorch Lightning module inheriting from a shared \texttt{BaseAutoencoder} base class.
+
+The encoder accepts RGB images and applies four successive strided convolutional layers with kernel size $3 \times 3$, stride 2, and padding 1. Each layer doubles the number of feature channels while halving the spatial dimensions, yielding channel depths of 16, 32, 64, and 128 respectively. ReLU activations follow each convolution. For a $256 \times 256$ input, the resulting latent tensor has shape $128 \times 16 \times 16$. The latent space retains spatial structure rather than collapsing to a flat vector, preserving spatial relationships for the decoder to exploit during reconstruction.
+
+The decoder mirrors the encoder using four transposed convolutional layers (\texttt{ConvTranspose2d}) with matching kernel size, stride, and padding, supplemented by \texttt{output\_padding=1} to ensure exact spatial reconstruction at each upsampling step. Channel depths are reduced symmetrically: 128 $\to$ 64 $\to$ 32 $\to$ 16 $\to$ 3. ReLU activations are applied after the first three layers, while the final layer uses a sigmoid activation to constrain reconstructed pixel values to the range $[0, 1]$.
+
+Training is supervised by the mean squared error between the input $x$ and its reconstruction $\hat{x}$.
+Parameters are optimized using the Adam optimizer with a default learning rate of $10^{-3}$. Both training and validation losses are logged at each step to monitor convergence and detect overfitting.
 
 
 \section{Evaluation}
 very good
+
+\subsection{Datasets}
+We used imagenet photos.
+
+\subsection{MSE, PSNR, and SSIM statistics }
+MSE, PSNR, and SSIM statistics  theory??????????????????????
+
+\subsection{Results}
+250 percent good
 
 
 \section{Conclusion}
