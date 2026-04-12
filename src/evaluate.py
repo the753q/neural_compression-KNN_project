@@ -100,6 +100,8 @@ def quantize_tensor(tensor):
     return (tensor_u8, tensor_rec)
   
 def eval_compression():
+    print("Running evaluation of compression...\n")
+
     # FILE = "../datasets/misc/div2k_greece.png"
     FILE = "../datasets/misc/imagenet_birds.JPEG"
 
@@ -164,6 +166,8 @@ def eval_patches():
     )
     datamodule.setup()
     val_loader = datamodule.val_dataloader()
+
+    print("Running evaluation by patches... \n")
 
     print(f"Loading {MODEL} from {CKPT}...")
     model_class = get_model(MODEL).__class__
