@@ -2,7 +2,7 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, Subset, random_split
+from torch.utils.data import DataLoader, Dataset, Subset, random_split, ConcatDataset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 import torch
@@ -106,7 +106,7 @@ class ClassImagesDataModule(pl.LightningDataModule):
                            num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
     
 class Div2KDataModule(pl.LightningDataModule):
-    def __init__(self, train_dir, val_dir, batch_size=64, num_workers=4, patch_size=256):
+    def __init__(self, train_dir, val_dir, batch_size=64, num_workers=4, patch_size=256, random_crop=True):
         super().__init__()
         self.train_dir = train_dir
         self.val_dir = val_dir
@@ -114,10 +114,15 @@ class Div2KDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.patch_size = patch_size
 
-        self.transform = transforms.Compose([
-            transforms.RandomCrop((self.patch_size, self.patch_size)),
-            transforms.ToTensor(),
-        ])
+        if random_crop:
+            self.transform = transforms.Compose([
+                transforms.RandomCrop((self.patch_size, self.patch_size)),
+                transforms.ToTensor(),
+            ])
+        else:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
 
         self.collate_fn = lambda batch: torch.stack([img for img, _ in batch])
 
@@ -145,3 +150,32 @@ class Div2KDataModule(pl.LightningDataModule):
         return DataLoader(self.test_ds, batch_size=self.batch_size, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
     
+class ConcatDatasetsDataModule(pl.LightningDataModule):
+    def __init__(self, datamodules = [], batch_size=64, num_workers=4, patch_size=256):
+        super().__init__()
+        assert isinstance(datamodules, list)
+        assert len(datamodules) > 1
+        assert all(isinstance(dm, pl.LightningDataModule) for dm in datamodules)
+
+        self.datamodules = datamodules
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.collate_fn = lambda batch: torch.stack([img for img, _ in batch])
+
+    def setup(self, stage=None):
+        for dm in self.datamodules:
+            dm.setup(stage)
+
+        assert all(hasattr(dm, "train_ds") for dm in self.datamodules)
+        assert all(hasattr(dm, "val_ds") for dm in self.datamodules)
+
+        self.train_ds = ConcatDataset([dm.train_ds for dm in self.datamodules])
+        self.val_ds   = ConcatDataset([dm.val_ds   for dm in self.datamodules])
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True,
+                          num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=self.batch_size, shuffle=False,
+                          num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)

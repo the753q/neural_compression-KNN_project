@@ -2,7 +2,7 @@ import lightning.pytorch as pl
 import torch
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from data import ImageNetSubsetDataModule, ClassImagesDataModule, Div2KDataModule
+from data import ImageNetSubsetDataModule, ClassImagesDataModule, Div2KDataModule, ConcatDatasetsDataModule
 
 from models import get_model
 
@@ -20,10 +20,9 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
     random_crop=True
 )
 
-datamodule_default_minecraft_screenshots = ClassImagesDataModule(
-    data_dir="../datasets/screenshots",
-    batch_size=8,
-    random_crop=True
+datamodule_default_concat = ConcatDatasetsDataModule(
+    [datamodule_default_div2k, datamodule_default_imagenet10k],
+    batch_size=8
 )
 
 
@@ -66,12 +65,12 @@ def experiment1():
 
 def experiment2():
     """
-        Train a basic AE on the minecraft screenshots.
+        Train a basic DCAL 2018 on div2K and imagenet combined.
     """
-    EXPERIMENT_NAME = "basic_minecraft"
-    MODEL_NAME = "basic"
-    EPOCHS = 3
-    LEARNING_RATE = 1e-3
+    EXPERIMENT_NAME = "dcal_combined"
+    MODEL_NAME = "DCAL_2018"
+    EPOCHS = 10
+    LEARNING_RATE = 1e-4
     
     model = get_model(MODEL_NAME, learning_rate=LEARNING_RATE)
 
@@ -95,15 +94,15 @@ def experiment2():
     print(f"Started experiment: {EXPERIMENT_NAME}")
 
     print(f"Starting training for {MODEL_NAME}...")
-    trainer.fit(model, datamodule_default_minecraft_screenshots)
+    trainer.fit(model, datamodule_default_concat)
     print(f"Training complete. Best model saved to checkpoints/{checkpoint_filename}.ckpt")
 
     print(f"Finished experiment: {EXPERIMENT_NAME}")
     print("="*30)
 
 def main():
-    # experiment1()
-    experiment2()
+    experiment1()
+    #experiment2()
 
 if __name__ == "__main__":
     main()
