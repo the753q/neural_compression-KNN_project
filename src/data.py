@@ -60,18 +60,23 @@ class ImageNetSubsetDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
-class CommonImagesDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir, batch_size=64, num_workers=4, patch_size = 256):
+class ClassImagesDataModule(pl.LightningDataModule):
+    def __init__(self, data_dir, batch_size=64, num_workers=4, patch_size = 256, random_crop = True):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.patch_size = patch_size
 
-        self.transform = transforms.Compose([
-            transforms.RandomCrop((self.patch_size, self.patch_size)),
-            transforms.ToTensor(),
-        ])
+        if random_crop:
+            self.transform = transforms.Compose([
+                transforms.RandomCrop((self.patch_size, self.patch_size)),
+                transforms.ToTensor(),
+            ])
+        else:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
 
         self.collate_fn=lambda batch: torch.stack([img for img, _ in batch])
 
@@ -138,4 +143,5 @@ class Div2KDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test_ds, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)    
+                          num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
+    

@@ -10,17 +10,24 @@ import io
 from torchvision import transforms
 import dahuffman
 
-from data import ImageNetSubsetDataModule, CommonImagesDataModule
+from data import ClassImagesDataModule
 from models import get_model
 
 import argparse
 
-MODEL = "basic"
-CKPT = "checkpoints/basic_minecraft-basic-best.ckpt"
-# CKPT = "checkpoints/basic-best.ckpt"
-DATA_DIR = "../datasets/imagenet_subtrain"
-NUM_IMAGES = 8
 OUTPUT_DIR = "outputs"
+
+datamodule_no_crop_imagenet10k = ClassImagesDataModule(
+    data_dir="../datasets/imagenet_subtrain",
+    batch_size=1,
+    random_crop=False
+)
+
+datamodule_no_crop_minecraft_screenshots = ClassImagesDataModule(
+    data_dir="../datasets/screenshots",
+    batch_size=1,
+    random_crop=False
+)
 
 class ImageComparisonMetrics:
     def __init__(self):
@@ -102,80 +109,82 @@ def quantize_tensor(tensor):
 
     return (tensor_u8, tensor_rec)
   
-def eval_compression():
+def eval_compression(model_name, model_checkpoint, datamodule):
+    assert(datamodule.batch_size == 1) # prevent too big sizes in memmory
+
+    datamodule.setup()
+    val_loader = datamodule.val_dataloader()
+    
     print("Running evaluation of compression...\n")
 
-    # FILE = "../datasets/misc/div2k_greece.png"
-    FILE = "../datasets/misc/imagenet_birds.JPEG"
-
-    img = Image.open(FILE).convert("RGB")
-    patches =  non_overlaping_patches(img)
-
-    print(f"Loading {MODEL} from {CKPT}...")
-    model_class = get_model(MODEL).__class__
-    model = model_class.load_from_checkpoint(CKPT)
+    print(f"Loading {model_name} from {model_checkpoint}...")
+    model_class = get_model(model_name).__class__
+    model = model_class.load_from_checkpoint(model_checkpoint)
 
     model.eval()
     model.freeze()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    transform = transforms.ToTensor()
-    patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(device)
-
     img_comp_metrics = ImageComparisonMetrics()
 
-    quantized_tensor = None
-    with torch.no_grad():
-        bottleneck = model.encoder(patches_batch)
+    N_IMAGES = 4
+    print("="*45)
+    print(f"{"i"}\t{'Image size'}\t{'Size before'}\t{'Size after'}\t{'ratio'}")
+    print("="*45)
+    for i, batch_tensor in enumerate(val_loader):
+        if i+1 > N_IMAGES:
+            break
 
-        quantized_tensor, tensor_reconstructed = quantize_tensor(bottleneck)
+        img = transforms.ToPILImage()(batch_tensor[0]).convert("RGB")
 
-        reconstructions = model.decoder(tensor_reconstructed)
+        patches = non_overlaping_patches(img)
 
-    # compare compression
-    buf_img = io.BytesIO()
-    img.save(buf_img, format="PNG")
+        transform = transforms.ToTensor()
+        patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(device)
 
-    codec = dahuffman.HuffmanCodec.from_data(quantized_tensor.flatten().tolist())
-    encoded = codec.encode(quantized_tensor.flatten().tolist())
-    buf_compressed = io.BytesIO(encoded)
+        quantized_tensor = None
+        with torch.no_grad():
+            bottleneck = model.encoder(patches_batch)
 
-    img_size = buf_img.tell()
-    compressed_size = buf_compressed.getbuffer().nbytes
-    ratio = img_size / compressed_size
+            quantized_tensor, tensor_reconstructed = quantize_tensor(bottleneck)
 
-    print("-"*45)
-    print(f"File: {FILE}, size: {img.size[0]}x{img.size[1]}")
-    print(f"{'Size before':>15} | {'Size after':>15} | {'Compression ratio':>15}")
-    print(f"{img_size//1024:>12} KB | {compressed_size//1024:>12} KB | {ratio:>15.2f}x")
+            reconstructions = model.decoder(tensor_reconstructed)
 
-    reconstructed = Image.new("RGB", img.size)
-    for i, (x, y) in enumerate(pos for pos, _ in patches):
-        patch = transforms.ToPILImage()(reconstructions[i].cpu())
-        reconstructed.paste(patch, (x, y))
+        # compare compression
+        buf_img = io.BytesIO()
+        img.save(buf_img, format="PNG")
 
-    img_comp_metrics.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+        codec = dahuffman.HuffmanCodec.from_data(quantized_tensor.flatten().tolist())
+        encoded = codec.encode(quantized_tensor.flatten().tolist())
+        buf_compressed = io.BytesIO(encoded)
+
+        img_size = buf_img.tell()
+        compressed_size = buf_compressed.getbuffer().nbytes
+        ratio = img_size / compressed_size
+
+        print(f"{i}\t{img.size[0]}x{img.size[1]}\t{img_size//1024} KB \t{compressed_size//1024} KB \t{ratio:>15.2f}x")
+
+        reconstructed = Image.new("RGB", img.size)
+        for rec_patch, ((x,y), _) in zip(reconstructions, patches):
+            patch = transforms.ToPILImage()(rec_patch.cpu())
+            reconstructed.paste(patch, (x, y))
+
+        img_comp_metrics.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+
+        reconstructed.save(f"{OUTPUT_DIR}/{model_checkpoint.replace("/", "_")}_{i}_reconstructed.png")
+
     img_comp_metrics.print_summary()
 
-    reconstructed.save(f"{OUTPUT_DIR}/reconstructed.png")
-
-# TODO use test dataset
-def eval_patches():
-    os.makedirs("outputs", exist_ok=True)
-
-    datamodule = CommonImagesDataModule(
-        data_dir=DATA_DIR,
-        batch_size=NUM_IMAGES
-    )
+def eval_patches(model_name, model_checkpoint, datamodule):
     datamodule.setup()
     val_loader = datamodule.val_dataloader()
 
     print("Running evaluation by patches... \n")
 
-    print(f"Loading {MODEL} from {CKPT}...")
-    model_class = get_model(MODEL).__class__
-    model = model_class.load_from_checkpoint(CKPT)
+    print(f"Loading {model_name} from {model_checkpoint}...")
+    model_class = get_model(model_name).__class__
+    model = model_class.load_from_checkpoint(model_checkpoint)
 
     model.eval()
     model.freeze()
@@ -202,20 +211,15 @@ def eval_patches():
     img_comp_metrics.print_summary()
 
     comparison = torch.cat([first_batch_originals, first_batch_reconstructions])
-    save_path = f"outputs/{MODEL}_comparison.png"
-    save_image(comparison, save_path, nrow=NUM_IMAGES)
+    save_path = f"outputs/{model_checkpoint.replace("/", "_")}_comparison.png"
+    save_image(comparison, save_path, nrow=first_batch_originals.shape[0])
     print(f"Image saved to {save_path}")
  
 def main():
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--model_name", type=str, required=True)
-    # parser.add_argument("--model_checkpoint", type=str, required=True)
-    # args = parser.parse_args()
-
-    # print(args.model_name)
-    
-    eval_compression()
-    eval_patches()
+    os.makedirs("outputs", exist_ok=True)
+    # eval_patches("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_default_imagenet10k)
+    #eval_patches("basic", "checkpoints/basic_minecraft-basic-best.ckpt", datamodule_default_minecraft_screenshots)
+    eval_compression("basic", "checkpoints/basic_minecraft-basic-best.ckpt", datamodule_no_crop_minecraft_screenshots)
 
 if __name__ == "__main__":
     main()
