@@ -256,7 +256,8 @@ def eval_patches(model_name, model_checkpoint, datamodule):
 def main():
     os.makedirs("outputs", exist_ok=True)
 
-    
+    #TODO get rid of need for crop datamodule in eval_patches
+
     eval_patches("basic", "checkpoints/basic_imagenet10k-basic-best-v1.ckpt", datamodule_imagenet10k_crop)
     eval_compression("basic", "checkpoints/basic_imagenet10k-basic-best-v1.ckpt", datamodule_imagenet10k_no_crop)
     
