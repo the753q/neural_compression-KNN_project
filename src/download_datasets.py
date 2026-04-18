@@ -14,9 +14,9 @@ import subprocess
 
 DATASETS_DIR = "datasets"
 
-def get_imagenet10K(name):
+def get_dataset(kaggle_path, name):
     print(f"Downloading dataset {name}")
-    path = kagglehub.dataset_download("priyerana/imagenet-10k")
+    path = kagglehub.dataset_download(kaggle_path)
     print(f"Downloaded dataset {name} to: {path}")
     shutil.copytree(path, f"{DATASETS_DIR}/{name}", dirs_exist_ok=True)
     print(f"Copied dataset {name} to: {DATASETS_DIR}/{name}")
@@ -46,6 +46,7 @@ def get_df2k():
 
     # separate test files
     all_files = os.listdir(DF2K_TRAIN_DIR)
+    all_files = random.shuffle(all_files)
     test_files = all_files[:100]
 
     print(test_files[0])
@@ -60,5 +61,5 @@ def get_df2k():
 shutil.rmtree(DATASETS_DIR, ignore_errors=True)
 os.makedirs(DATASETS_DIR, exist_ok=True)
 
-get_imagenet10K(name="ImageNet_10K")
+get_dataset(kaggle_path="priyerana/imagenet-10k", name="ImageNet_10K")
 get_df2k()
