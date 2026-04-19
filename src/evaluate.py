@@ -19,6 +19,14 @@ import argparse
 
 OUTPUT_DIR = "outputs"
 
+def get_jpeg_image(img):
+    buf_jpeg = io.BytesIO()
+    img.save(buf_jpeg, format="JPEG", quality=95)
+    jpeg_size = buf_jpeg.tell()
+    buf_jpeg.seek(0)
+    jpeg_img = Image.open(buf_jpeg)
+    return jpeg_img, jpeg_size
+
 datamodule_imagenet10k_crop = ClassImagesDataModule(
     data_dir="datasets/imagenet_10K/imagenet_subtrain",
     batch_size=8,
@@ -124,6 +132,41 @@ class ImagePatcher:
             reconstructed.paste(patch, (x, y))
         return reconstructed
 
+class ImageCompressionMetric:
+    _psnr_fn = PeakSignalNoiseRatio(data_range=1.0)
+
+    def __init__(self, img_name, img_before, compressed, img_after):
+        self.img_name = img_name
+        self.dims = img_before.size
+
+        buf_img = io.BytesIO()
+        img_before.save(buf_img, format="PNG")
+        buf_compressed = io.BytesIO(compressed)
+        self.size_before = buf_img.tell()
+        self.size_after = buf_compressed.getbuffer().nbytes
+        self.ratio = self.size_before / self.size_after
+        self.bpp = (self.size_after*8.0) / (self.dims[0]*self.dims[1])
+
+
+        jpeg_img, jpeg_size = get_jpeg_image(img_before)
+        self.jpeg_ratio = self.size_before/jpeg_size
+
+        self.psnr = self._psnr_fn(transforms.ToTensor()(img_before).unsqueeze(0), 
+                   transforms.ToTensor()(img_after).unsqueeze(0))
+        
+        self.psnr_jpeg = self._psnr_fn(transforms.ToTensor()(img_before).unsqueeze(0), 
+            transforms.ToTensor()(jpeg_img).unsqueeze(0))
+
+    def print_summary(self):
+        print("\n" + "=" * 30)
+        print(f"{self.img_name}: {self.dims[0]}x{self.dims[1]}")
+        print(f"{self.bpp:>0.2f} bpp | {self.size_before//1024} KB -> {self.size_after//1024} KB")
+        print(f"{self.ratio:>0.2f}x (jpeg: {self.jpeg_ratio:>0.2f}x)")
+        print(f"PSNR: {self.psnr:>0.2f} (jpeg: {self.psnr_jpeg:>0.2f})")
+        print("=" * 30)
+
+
+
 def eval_compression(model, evaluation_name, datamodule):
     assert(datamodule.batch_size == 1) # prevent too big sizes in memmory
 
@@ -134,14 +177,14 @@ def eval_compression(model, evaluation_name, datamodule):
 
     device = next(model.parameters()).device
 
-    img_comp_metrics_ours = ImageComparisonMetrics()
-    img_comp_metrics_jpeg = ImageComparisonMetrics()
+    img_comp_metrics_ours = ImageComparisonMetrics("orignal", "compressed (ours)")
+    img_comp_metrics_jpeg = ImageComparisonMetrics("original", "compressed (jpeg)")
     img_patcher = ImagePatcher(patch_size=128)
 
-    N_IMAGES = 4
-    print("="*45)
-    print(f"{"i"}\t{'Image size'}\t{'Size before'}\t{'Size after'}\t{'ratio'}\t{'jpeg_ratio'}")
-    print("="*45)
+    compression_metrics = []
+
+    N_IMAGES = 30
+    N_SAVE = 5
     for i, batch_tensor in enumerate(val_loader):
         if i+1 > N_IMAGES:
             break
@@ -165,37 +208,25 @@ def eval_compression(model, evaluation_name, datamodule):
                 for img in reconstructions
             ])
 
+
+
         # at this point work with rgb original
         img = img.convert('RGB')
-
-        # compare compression
-        buf_img = io.BytesIO()
-        img.save(buf_img, format="PNG")
-
-        buf_compressed = io.BytesIO(bottleneck)
-
-        img_size = buf_img.tell()
-        compressed_size = buf_compressed.getbuffer().nbytes
-        ratio = img_size / compressed_size
-
-        buf_jpeg = io.BytesIO()
-        img.save(buf_jpeg, format="JPEG", quality=95)
-        jpeg_size = buf_jpeg.tell()
-        buf_jpeg.seek(0)
-        jpeg_img = Image.open(buf_jpeg)
-
-        jpeg_ratio = img_size/jpeg_size
-
-        print(f"{i}\t{img.size[0]}x{img.size[1]}\t{img_size//1024} KB \t{compressed_size//1024} KB \t{ratio:>15.2f}x \t {jpeg_ratio:>15.2}x")
 
         reconstructed = img_patcher.combine_patches(img.size,
                         [(x,y) for (x,y), _ in patches],
                         [transforms.ToPILImage()(r.cpu()) for r in reconstructions])
-
+        
         img_comp_metrics_ours.update(transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0))
+        jpeg_img, _ = get_jpeg_image(img)
         img_comp_metrics_jpeg.update(transform(img).unsqueeze(0), transform(jpeg_img).unsqueeze(0))
 
-        reconstructed.save(f"{OUTPUT_DIR}/{evaluation_name}_{i}_reconstructed.png")
+        if i < N_SAVE:
+            compression_metrics.append(ImageCompressionMetric(f"img_{i}", img, bottleneck, reconstructed))
+            reconstructed.save(f"{OUTPUT_DIR}/{evaluation_name}_{i}_reconstructed.png")
+
+    for metric in compression_metrics:
+        metric.print_summary()
 
     print("\nOur comparison metrics:")
     img_comp_metrics_ours.print_summary()
@@ -283,7 +314,7 @@ def main():
     else:
         dcal_model = torch.load("checkpoints/manual/DCAL_2018_best_50epoch.pt", weights_only=False)
         eval_patches(dcal_model, "basic_eval", datamodule_imagenet10k_crop)
-        # eval_compression(dcal_model, "basic_eval", datamodule_imagenet10k_no_crop)
+        eval_compression(dcal_model, "basic_eval", datamodule_imagenet10k_no_crop)
 
     #eval_patches("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_default_concat)
     #eval_compression("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_no_crop_concat)
