@@ -12,17 +12,17 @@
 
 \title{Image Compression Using Neural Networks}
 
-\author{\IEEEauthorblockN{Tomáš Macák}
+\author{\IEEEauthorblockN{Bc. Tomáš Macák}
 \IEEEauthorblockA{\textit{Faculty of Information Technology} \\
 \textit{Brno University of Technology}\\
 Brno, Czech Republic}
 \and
-\IEEEauthorblockN{Bartosz Konderla}
+\IEEEauthorblockN{Bc. Bartosz Konderla}
 \IEEEauthorblockA{\textit{Faculty of Information Technology} \\
 \textit{Brno University of Technology}\\
 Brno, Czech Republic}
 \and
-\IEEEauthorblockN{Peter Va\v{n}o}
+\IEEEauthorblockN{Bc. Peter Va\v{n}o}
 \IEEEauthorblockA{\textit{Faculty of Information Technology} \\
 \textit{Brno University of Technology}\\
 Brno, Czech Republic}
@@ -31,7 +31,7 @@ Brno, Czech Republic}
 \maketitle
 
 \begin{abstract}
-Neural networks can achieve high levels of compression by learning to represent an image through its underlying structure and producing a size-efficient coding. We employ convolutional autoencoders to extract the bottleneck weights as the compressed representation.
+Neural networks can achieve high levels of compression by learning to represent an image through its underlying structure and producing a size-efficient coding. We employ convolutional autoencoders to extract the bottleneck features as the compressed representation.
 \end{abstract}
 
 
@@ -41,7 +41,7 @@ learned image compression, convolutional autoencoders, deep neural networks
 
 
 \section{Introduction}
-As the availability of processing power rises, so does the volume and resolution of image data. To store these large amounts of data, an ongoing tradeoff between the source file's original structure and its lossy compressed representation has to be made.
+As the availability of processing power rises, so does the volume and resolution of image data. To store these large amounts of data in a size-efficient manner, an ongoing tradeoff between the source file's original structure and its lossy compressed representation has to be made.
 
 Traditional image compression methods, like JPEG, rely on the hand-crafted encoder/decoder block \cite{cheng_deep_2018}. These methods, while possibly not optimal, were also designed to work within the low processing power of older devices.
 
@@ -53,7 +53,11 @@ When it comes to general autoencoder models, the encoding part produces the bott
 
 
 \section{Related Work}
-\subsection{AE Based Compression}
+In this section, we review prior research in the field of learned image compression. We summarize existing approaches and key trends in the field, highlighting their underlying assumptions and reported performance characteristics.
+
+\subsection{Convolutional Autoencoder Compression}
+
+Researchers \cite{cheng_deep_2018} built a symmetric convolutional autoencoder structure with multiple downsampling and upsampling units to generate feature maps with low dimensions. The encoder part was a pipeline transforming the source RGB image to YCbCr format and normalizing it to the range $[0,1]$. The image then went into the CAE network block, which enveloped both the encoder and decoder pipelines. The CAE itself was made up of 3 downsampling units in the first part, each consisting of 2 convolutional layers. Each convolution was followed by a PReLU activation. During training, a uniform noise was added to the latent vector, imitating the effect of the quantizer present at inference time, which was not differentiable and thus could not be used directly during training. The output of the pre-trained CAE thus utilized a PCA rotation to produce more zeros, improving efficiency. Subsequently, 12-bit quantization and the entropy coder were used to compress the data further. The model itself always expected a 128x128x1 tensor in, and outputted a 16x16x32 feature map out. To achieve compression on larger image sizes, they sliced the images into patches and ran the CAE independently on each slice. Their results outperformed conventional image coding algorithms and achieved a 13.7\% BD-rate saving compared to JPEG2000 on the Kodak dataset. Their average running time, however, was 80ms longer on GPU and 1700ms longer on CPU than with JPEG2000. 
 
 
 \section{Evaluation}
@@ -99,7 +103,7 @@ Peak signal-to-noise ratio (PSNR) is defined as the ratio of the maximum pixel i
 where $MAX_I$ represents the maximum possible pixel value of the image. Compared to MSE, PSNR transforms the error scale into a more manageable logarithmic one, where in practice, most values land on a scale of $[0, 100]$ (theoretically, in the case of no error, to $\infty$).
 
 \paragraph{Structure Similarity Index}
-Structural similarity index (SSIM) measures structural similarity. It models perceived quality by comparing local luminance, contrast, and structural correlation, reflecting the non-linear sensitivity of the human visual system to image distortions. It's based on visible structures inside the image and can predict the perceived quality of the compressed image. 
+Structural similarity index (SSIM) measures structural similarity. It models perceived quality by comparing local luminance, contrast, and structural correlation, reflecting the non-linear sensitivity of the human visual system to image distortions \cite{cheng_deep_2018}. It's based on visible structures inside the image and can predict the perceived quality of the compressed image. 
 The resulting value of this metric is between -1 and 1 (when identical). The equation is:
 
 \begin{equation}
@@ -153,7 +157,7 @@ Parameters are optimized using the Adam optimizer with a default learning rate o
 
 
 \section{Conclusion}
-
+Note how model based compression requires more processing power at inference, also showing differences between architectures, differing based on if CPU or GPU was used \cite{cheng_deep_2018}... 
 
 
 \section*{Source Code}
@@ -163,11 +167,10 @@ The implementation can be accessed from a public GitHub repository at
 
 \twocolumn[
 \begin{@twocolumnfalse}
-
-\bibliographystyle{IEEEtran}
-\bibliography{paper/KNN_compression.bib}
-
+    \bibliographystyle{IEEEtran}
+    \bibliography{paper/KNN_compression.bib}
 \end{@twocolumnfalse}
 ]
+
 
 \end{document}
