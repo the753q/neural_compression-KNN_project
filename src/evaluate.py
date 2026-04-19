@@ -214,6 +214,9 @@ def eval_patches(model, evaluation_name, datamodule):
     print("Evaluating model over the validation set...")
     with torch.no_grad():
         for i, batch in enumerate(val_loader):
+            if i*datamodule.batch_size > 100:
+                break
+
             originals = batch.to(device)
             reconstructions = model(originals)
 
@@ -264,7 +267,7 @@ def main():
         eval_patches(basic_model, "basic_eval", datamodule_imagenet10k_crop)
         eval_compression(basic_model, "basic_eval", datamodule_imagenet10k_no_crop)
     else:
-        dcal_model = torch.load("checkpoints/manual/DCAL_2018_best.pt", weights_only=False)
+        dcal_model = torch.load("checkpoints/manual/DCAL_2018_best_50epoch.pt", weights_only=False)
         eval_patches(dcal_model, "basic_eval", datamodule_imagenet10k_crop)
         eval_compression(dcal_model, "basic_eval", datamodule_imagenet10k_no_crop)
 

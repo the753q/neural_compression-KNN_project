@@ -3,6 +3,7 @@
 *lightning_logs/
 checkpoints/
 outputs/
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
