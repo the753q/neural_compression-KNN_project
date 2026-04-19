@@ -250,4 +250,3 @@ class DCAL_2018(BaseAutoencoder):
         x_hat = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
 
         return (x_hat, z_compressed_data)
-        
