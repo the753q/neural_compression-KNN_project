@@ -49,6 +49,30 @@ class BasicAE(BaseAutoencoder):
         self.rate_coeffitient = 1.0  # higher -> more compression
         assert self.rate_coeffitient >= 0.0
 
+    def rgb_to_ycbcr(self, x):
+        r, g, b = x[0:1], x[1:2], x[2:3]
+        y  =  0.299 * r + 0.587 * g + 0.114 * b
+        cb = -0.169 * r - 0.331 * g + 0.500 * b + 0.5
+        cr =  0.500 * r - 0.419 * g - 0.081 * b + 0.5
+        return torch.cat([y, cb, cr], dim=0)
+    
+    def ycbcr_to_rgb(self, x):
+        y, cb, cr = x[0:1], x[1:2], x[2:3]
+        cb = cb - 0.5
+        cr = cr - 0.5
+        r = y + 1.402 * cr
+        g = y - 0.344 * cb - 0.714 * cr
+        b = y + 1.772 * cb
+        return torch.cat([r, g, b], dim=0).clamp(0, 1)
+    
+    def pass_to_encoders(self, x):
+        encoded = self.encoder(x)
+        return encoded
+
+    def pass_to_decoders(self, x):
+        decoded = self.decoder(x)
+        return decoded
+
     def entropy_coder(self, x):
         symbols = x.cpu().numpy().astype(np.int32).flatten()
         # tile to match batch dimension in symbols
@@ -105,12 +129,14 @@ class BasicAE(BaseAutoencoder):
 
     def training_step(self, batch, batch_idx):
         x = batch
-        z = self.encoder(x)
+        z = self.pass_to_encoders(x)
+        #z = self.encoder(x)
 
         # add uniform noise to simulate quantization
         noise = torch.zeros_like(z).uniform_(-(1.0/1024.0), 1.0/1024.0)
 
-        x_hat = self.decoder(z+noise)
+        # x_hat = self.decoder(z+noise)
+        x_hat = self.pass_to_decoders(z+noise)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
         
@@ -119,8 +145,10 @@ class BasicAE(BaseAutoencoder):
     
     def validation_step(self, batch, batch_idx):
         x = batch
-        z = self.encoder(x)
-        x_hat = self.decoder(z)
+        # z = self.encoder(x)
+        z = self.pass_to_encoders(x)
+        # x_hat = self.decoder(z)
+        x_hat = self.pass_to_decoders(z)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
         self.log("val_loss", loss, prog_bar=True)
@@ -130,7 +158,8 @@ class BasicAE(BaseAutoencoder):
         return x_hat
 
     def forward_get_latent(self, x):
-        z = self.encoder(x)
+        # z = self.encoder(x)
+        z = self.pass_to_encoders(x)
         z_rot = self.pca_rotation(z)
         z_q = self.quantizer(z_rot)
 
@@ -151,6 +180,7 @@ class BasicAE(BaseAutoencoder):
 
         z_deq = self.dequantizer(z_decompressed)
         z_inv_rot = self.pca_inverse(z_deq)
-        x_hat = self.decoder(z_inv_rot)
+        # x_hat = self.decoder(z_inv_rot)
+        x_hat = self.pass_to_decoders(z_inv_rot)
 
         return (x_hat, z_compressed_data)

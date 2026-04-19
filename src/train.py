@@ -15,6 +15,7 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
     data_dir="datasets/imagenet_10K/imagenet_subtrain",
     batch_size=8,
     random_crop=True,
+    ycbcr=True,
     patch_size=128
 )
 
@@ -22,6 +23,7 @@ datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
     batch_size=8,
+    ycbcr=True,
     random_crop=True
 )
 
@@ -31,7 +33,7 @@ def experiment1():
     """
     EXPERIMENT_NAME = "basic_imagenet10k"
     MODEL_NAME = "basic"
-    EPOCHS = 10
+    EPOCHS = 15
     LEARNING_RATE = 2e-4
     
     model = get_model(MODEL_NAME, learning_rate=LEARNING_RATE)

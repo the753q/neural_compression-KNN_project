@@ -22,27 +22,31 @@ datamodule_imagenet10k_crop = ClassImagesDataModule(
     data_dir="datasets/imagenet_10K/imagenet_subtrain",
     batch_size=8,
     random_crop=True,
+    ycbcr=True,
     patch_size=128
 )
 
 datamodule_imagenet10k_no_crop = ClassImagesDataModule(
     data_dir="datasets/imagenet_10K/imagenet_subtrain",
     batch_size=1,
-    random_crop=False
+    random_crop=False,
+    ycbcr=True,
 )
 
 datamodule_df2k_crop = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
     batch_size=8,
-    random_crop=True
+    random_crop=True,
+    ycbcr=True,
 )
 
 datamodule_df2k_no_crop = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
     batch_size=1,
-    random_crop=False
+    random_crop=False,
+    ycbcr=True,
 )
 
 class ImageComparisonMetrics:
@@ -233,7 +237,7 @@ def main():
     # basic_model = load_model_from_checkpoint("basic", "checkpoints/basic_imagenet10k-basic-best-v1.ckpt")
     basic_model = torch.load("checkpoints/manual/basic_best.pt", weights_only=False)
 
-    eval_patches(basic_model, "basic_eval", datamodule_imagenet10k_crop)
+    #eval_patches(basic_model, "basic_eval", datamodule_imagenet10k_crop)
     eval_compression(basic_model, "basic_eval", datamodule_imagenet10k_no_crop)
     #eval_compression("basic", "checkpoints/basic_imagenet10k-basic-best.ckpt", datamodule_imagenet10k_no_crop)
     

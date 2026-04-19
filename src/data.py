@@ -31,7 +31,7 @@ class DatasetFolder(Dataset):
         return image
 
 class DataModuleBase(pl.LightningDataModule):
-    def __init__(self, batch_size=64, num_workers=4, random_crop=True, patch_size=256):
+    def __init__(self, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size=256):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -40,15 +40,14 @@ class DataModuleBase(pl.LightningDataModule):
 
         assert not ((not random_crop) and (batch_size > 1)), "Can't combine images of various sizes in one batch."
 
+        t = []
         if random_crop:
-            self.transform = transforms.Compose([
-                transforms.RandomCrop((self.patch_size, self.patch_size)),
-                transforms.ToTensor(),
-            ])
-        else:
-            self.transform = transforms.Compose([
-                transforms.ToTensor(),
-            ])
+            t.append(transforms.RandomCrop((self.patch_size, self.patch_size)))
+        if ycbcr:
+            t.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
+        t.append(transforms.ToTensor())
+
+        self.transform = transforms.Compose(t)
         
         self.collate_fn=lambda batch: torch.stack([img for img, _ in batch])
 
@@ -71,8 +70,9 @@ class DataModuleBase(pl.LightningDataModule):
                           num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
 
 class ClassImagesDataModule(DataModuleBase):
-    def __init__(self, data_dir, batch_size=64, num_workers=4, patch_size = 256, random_crop = True):
-        super().__init__(batch_size, num_workers, random_crop, patch_size)
+    def __init__(self, data_dir, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size = 256):
+        super().__init__(random_crop = random_crop, ycbcr=ycbcr,
+                        batch_size=batch_size, num_workers=num_workers, patch_size=patch_size)
 
         self.data_dir = data_dir
 
@@ -90,8 +90,9 @@ class ClassImagesDataModule(DataModuleBase):
         )
     
 class DF2KDataModule(DataModuleBase):
-    def __init__(self, train_dir, test_dir, batch_size=64, num_workers=4, patch_size=256, random_crop=True):
-        super().__init__(batch_size, num_workers, random_crop, patch_size)
+    def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size = 256):
+        super().__init__(random_crop = random_crop, ycbcr=ycbcr,
+                batch_size=batch_size, num_workers=num_workers, patch_size=patch_size)
         
         self.train_dir = train_dir
         self.test_dir = test_dir
