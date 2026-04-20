@@ -139,7 +139,7 @@ and $K_1$, $K_2$ are small constants (typically $K_1=0.01$ and $K_2=0.03$) \cite
 \section{Experiments}
 This section explains the structure of our work and the experiments conducted to evaluate its compression strength.
 
-\subsection{Implementation Details}
+\subsection{Workflow and Implementation Details}
 For ease of use, we propose a harness that allows for seamless swapping of different compression architectures. The harness provides standardized dataset loading and preprocessing while also providing evaluation capabilities.
 
 First, the $data.py$ file defines the various datasets we use, each as its own subclass of the PyTorch Lightning \cite{noauthor_pytorch_nodate} library $LightningDataModule$, achieving seamless integration within the main training code. Batch size and the number of workers for batch preparation are defined for each module. Additionally, we set whether we want the images to be scaled to a fixed size or cut into patches. By splitting each image into sub-parts, we allow the model to learn from more examples and prevent overfitting. Multiple datasets can be concatenated as well. Inside the class, we also define the separate train, test, and validation sets. 
@@ -153,7 +153,27 @@ Each image is sliced into parts, with each part compressed individually. After s
 
 Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated. We also compare our method to JPEG compression in terms of image quality and compression rate.
 
-\subsection{Model Architecture}
+\subsection{Current State}
+
+We have currently implemented the architecture from \cite{cheng_deep_2018} as closely as possible based on the description in the paper, with some temporary simplifications. In short, we work with normalized YCbCr images and process each channel separately, so a 128×128×1 patch is the input to the encoder. We perform PCA rotations, then apply a simple quantization formula as mentioned in the paper. We quantize the 3 latent vectors, one per channel in YCbCr, as well as 3 rotation matrices from PCA. This quantized data are then encoded using Huffman coding. The entropy method is temporary and may be replaced later; currently, we are focusing on producing low-entropy latents after the PCA rotation.
+
+Current PCA, Quantization pipeline \cite{cheng_deep_2018}:
+\begin{enumerate}
+    \item $$y_{rot} = U^T y$$
+    \item $$y' = \left\lfloor 2^{B-1} \cdot y_{rot} \right\rceil$$
+    \item $$\tilde{y} = \frac{y'}{2^{B-1}}$$
+    \item $$\hat{y} = U\tilde{y}$$
+\end{enumerate}
+Here \it{y} is the latent vector, encoder output, $\hat{y}$ is the recovered latent that will go into the decoder network, \it{U} is the PCA matrix produced from the image feature maps and \it{B} is the desired number of bits.
+
+We plan to do more experiments with this model including:
+\begin{enumerate}
+    \item Train on the DF2K dataset with much higher epochs.
+    \item Train with different distortion loss: MAE, Huber.
+    \item Train with different rate loss: $-\sum{xlog_2{(x)}}$.
+\end{enumerate}
+
+{\color{red}
 The proposed model is a convolutional autoencoder consisting of two symmetric subnetworks: an encoder that progressively compresses the input into a compact latent representation and a decoder that reconstructs the original input from that representation. The full model, \texttt{BasicAE}, is implemented as a PyTorch Lightning module inheriting from a shared \texttt{BaseAutoencoder} base class.
 
 The encoder accepts RGB images and applies four successive strided convolutional layers with kernel size $3 \times 3$, stride 2, and padding 1. Each layer doubles the number of feature channels while halving the spatial dimensions, yielding channel depths of 16, 32, 64, and 128 respectively. ReLU activations follow each convolution. For a $256 \times 256$ input, the resulting latent tensor has shape $128 \times 16 \times 16$. The latent space retains spatial structure rather than collapsing to a flat vector, preserving spatial relationships for the decoder to exploit during reconstruction.
@@ -162,7 +182,7 @@ The decoder mirrors the encoder using four transposed convolutional layers (\tex
 
 Training is supervised by the mean squared error between the input $x$ and its reconstruction $\hat{x}$.
 Parameters are optimized using the Adam optimizer with a default learning rate of $10^{-3}$. Both training and validation losses are logged at each step to monitor convergence and detect overfitting.
-
+}
 
 {\color{red}\textit{We will get a much smaller image that is represented by small areas defined by those parameters. This representation is much smaller and it still can be compressed by conventional algorithms to get even smaller. This is what we want to store, as it is the smallest data representation. When we want to decompress the data, we will start by decompressing in the conventional manner, so we will again get the flags-area representation. This representation is then reconstructed by the second part of the model, which will generate the image back to the required resolution. As the image is generated, there is the mentioned data loss. 
 }}
