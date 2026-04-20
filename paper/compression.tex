@@ -82,11 +82,14 @@ ImageNet is an image dataset organized according to concepts constructed from th
 
 For basic experiments, we use a subset of the dataset. The ImageNet 10k dataset contains 10 randomly selected images from each of the 1000 classes of the original \cite{noauthor_imagenet_nodate}. 
 
-\paragraph{Flickr-Faces-HQ small}
-The Flickr Faces dataset contains high-quality images of human faces. It offers 70,000 PNG images at 1024×1024 resolution that display diverse ages, ethnicities, image backgrounds, and accessories like hats and eyeglasses \cite{noauthor_flickr-faces-hq_nodate}.
-
 \paragraph{Div2K High Resolution Images}
 The Div2K is a large dataset with a diverse range of contents. It is split into various categories of image quality, of which we only use the high resolution subset (of around 2k resolution) \cite{noauthor_div2k_nodate}. 
+
+\paragraph{Flickr2K}
+2650 high-quality images from Flickr, commonly used for super-resolution training. We use it combined with Div2K; the combination is sometimes called \it{DF2K}. \cite{noauthor_flickr2k_nodate}. 
+
+\paragraph{Flickr-Faces-HQ small}
+The Flickr Faces dataset contains high-quality images of human faces. It offers 70,000 PNG images at 1024×1024 resolution that display diverse ages, ethnicities, image backgrounds, and accessories like hats and eyeglasses \cite{noauthor_flickr-faces-hq_nodate}.
 
 \subsection{Metrics}
 We evaluate the models based on various metrics, such as compression strength, reconstruction quality, and compute cost.
