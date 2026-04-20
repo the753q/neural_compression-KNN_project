@@ -284,6 +284,8 @@ def eval_patches(model, evaluation_name, datamodule):
     metrics_compressed.print_summary()
 
     comparison = torch.cat([first_batch_originals, first_batch_recs_just_cae, first_batch_recs_compressed])
+
+    os.makedirs("outputs", exist_ok=True)
     save_path = f"outputs/{evaluation_name}_comparison.png"
     save_image(comparison, save_path, nrow=first_batch_originals.shape[0])
     print(f"Image saved to {save_path}")
