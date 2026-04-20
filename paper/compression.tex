@@ -151,11 +151,7 @@ Models are built on top of a base autoencoder module in the $base.py$ file, impl
 Evaluation is then performed via the $evaluate.py$ file, which loads dataset modules, compression metrics, and performs the compression and decompression of images with a specified trained model. 
 Each image is sliced into parts, with each part compressed individually. After subsequent decompression, the slices are merged together to reconstruct the original image. The slicing algorithm creates non-overlapping slices that, during compression, leave the model without the context of the surrounding area.
 
-During encoding, the model output is quantized, where outliers are clamped to an IQR range and normalized. The encoding is converted to 8-bit values.
-
-Decoding part of the process maps the 8-bit values back to the $[0, 1]$ range of the model, runs them through the decoder, and performs the stitching of the slices back into a single image.
-
-Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated.
+Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated. We also compare our method to JPEG compression in terms of image quality and compression rate.
 
 \subsection{Model Architecture}
 The proposed model is a convolutional autoencoder consisting of two symmetric subnetworks: an encoder that progressively compresses the input into a compact latent representation and a decoder that reconstructs the original input from that representation. The full model, \texttt{BasicAE}, is implemented as a PyTorch Lightning module inheriting from a shared \texttt{BaseAutoencoder} base class.
