@@ -175,14 +175,15 @@ Model based compression requires more processing power at inference, also showin
 
 
 \section{Future Work}
-We aim to model a size-agnostic architecture for image compression that would work for varying image sizes, with the latent vector changing in size as a result. We consider using a fully convolutional network, which would be trained on smaller slices of, for example, 256x256 pixels, to make the model learn compression quickly on a large number of examples. During inference, images of various sizes would be compressed and examined.
+We aim to explore modeling a size-agnostic architecture for image compression that would work for varying image sizes, with the latent vector changing in size as a result. We consider using a fully convolutional network, which would be trained on smaller slices of, for example, 256x256 pixels, to make the model learn compression quickly on a large number of examples. During inference, images of various sizes would be compressed and examined \cite{balle_end--end_2017} \cite{townsend_hilloc_2019}.
 
-To improve the rate–distortion tradeoff, a hyper-encoder block can be trained to output a hyperprior which, when provided to the entropy coder alongside the latent vector, enables it to differentiate between fine-grained textures and monotone structures, thereby reducing coding entropy and allowing lower distortion at a given bitrate.
+To improve the rate–distortion tradeoff, a hyper-encoder block can be trained to output a hyperprior which, when provided to the entropy coder alongside the latent vector, enables it to differentiate between fine-grained textures and monotone structures, thereby reducing coding entropy and allowing lower distortion at a given bitrate \cite{balle_variational_2018}.
 
 Alternatively, replacing the PCA rotation and quantization stage of our reproduced base model inspired by \cite{cheng_deep_2018} with a vector quantization (VQ) bottleneck \cite{oord_neural_2018} could allow quantization to be optimized jointly with the rest of the model. Furthermore, the PCA rotation would become redundant, as the codebook could learn optimal discrete representations directly. The resulting bitstream would consist of integer codebook indices rather than quantized floats, simplifying the entropy coding stage.
 
-As human vision is more sensitive to changes in brightness than to changes in color, by converting our images to YCbCr format, we could implement chroma subsampling. Full resolution would only be given to the luminance channel, with the chroma channels downsampled.
+As human vision is more sensitive to changes in brightness than to changes in color, by converting our images to YCbCr format, we could implement chroma subsampling. Full resolution would only be given to the luminance channel, with the chroma channels downsampled \cite{prativadibhayankaram_study_2024}.
 
+Most images contain only a handful of regions of interest. Focusing the processing power on those areas and spending less on the background could yield performance improvements, although with the model architecture rising in complexity \cite{tao_adanic_2023}.
 
 
 \section*{Source Code}
