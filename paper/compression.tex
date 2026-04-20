@@ -86,7 +86,7 @@ For basic experiments, we use a subset of the dataset. The ImageNet 10k dataset 
 The Div2K is a large dataset with a diverse range of contents. It is split into various categories of image quality, of which we only use the high resolution subset (of around 2k resolution) \cite{noauthor_div2k_nodate}. 
 
 \paragraph{Flickr2K}
-2650 high-quality images from Flickr, commonly used for super-resolution training. We use it combined with Div2K; the combination is sometimes called \it{DF2K}. \cite{noauthor_flickr2k_nodate}. 
+2650 high-quality images from Flickr, commonly used for super-resolution training. We use it combined with Div2K; the combination is sometimes called DF2K \cite{noauthor_flickr2k_nodate}. 
 
 \paragraph{Flickr-Faces-HQ small}
 The Flickr Faces dataset contains high-quality images of human faces. It offers 70,000 PNG images at 1024×1024 resolution that display diverse ages, ethnicities, image backgrounds, and accessories like hats and eyeglasses \cite{noauthor_flickr-faces-hq_nodate}.
@@ -157,21 +157,101 @@ Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated.
 
 We have currently implemented the architecture from \cite{cheng_deep_2018} as closely as possible based on the description in the paper, with some temporary simplifications. In short, we work with normalized YCbCr images and process each channel separately, so a 128×128×1 patch is the input to the encoder. We perform PCA rotations, then apply a simple quantization formula as mentioned in the paper. We quantize the 3 latent vectors, one per channel in YCbCr, as well as 3 rotation matrices from PCA. This quantized data are then encoded using Huffman coding. The entropy method is temporary and may be replaced later; currently, we are focusing on producing low-entropy latents after the PCA rotation.
 
-Current PCA, Quantization pipeline \cite{cheng_deep_2018}:
-\begin{enumerate}
-    \item $$y_{rot} = U^T y$$
-    \item $$y' = \left\lfloor 2^{B-1} \cdot y_{rot} \right\rceil$$
-    \item $$\tilde{y} = \frac{y'}{2^{B-1}}$$
-    \item $$\hat{y} = U\tilde{y}$$
-\end{enumerate}
-Here \it{y} is the latent vector, encoder output, $\hat{y}$ is the recovered latent that will go into the decoder network, \it{U} is the PCA matrix produced from the image feature maps and \it{B} is the desired number of bits.
+Current PCA, quantization pipeline \cite{cheng_deep_2018}:
 
-We plan to do more experiments with this model including:
 \begin{enumerate}
-    \item Train on the DF2K dataset with much higher epochs.
-    \item Train with different distortion loss: MAE, Huber.
-    \item Train with different rate loss: $-\sum{xlog_2{(x)}}$.
+    \item \hfill $\vphantom{\dfrac{y'}{2^{B-1}}} y_{\mathrm{rot}} = U^T y$ \hfill\null
+    \item \hfill $\vphantom{\dfrac{y'}{2^{B-1}}} y' = \left\lfloor 2^{B-1} \cdot y_{\mathrm{rot}} \right\rceil$ \hfill\null
+    \item \hfill $\tilde{y} = \dfrac{y'}{2^{B-1}}$ \hfill\null
+    \item \hfill $\vphantom{\dfrac{y'}{2^{B-1}}} \hat{y} = U\tilde{y}$ \hfill\null
 \end{enumerate}
+Here $y$ is the latent vector, encoder output; $\hat{y}$ is the recovered latent that will go into the decoder network; $U$ is the PCA matrix produced from the image feature maps; and $B$ is the desired number of bits.
+
+We plan to conduct more experiments with this model, including:
+\begin{enumerate}
+    \item Train on the DF2K dataset with many more epochs.
+    \item Train with different distortion losses: MAE, Huber.
+    \item Train with different rate loss: $-\sum{x \cdot log_2{(x)}}$.
+\end{enumerate}
+
+
+\section{Results}
+This section provides the results of the tests performed on the described experiments, as measured by metrics relevant to learned image compression.
+
+\subsection{Base model}
+In this paper, we describe our attempt at reimplementing the existing work of a CAE-based architecture \cite{cheng_deep_2018}. Now, we report the achieved results.
+
+\paragraph{Patch-Level Evaluation}
+To understand the intrinsic reconstruction capabilities of our architecture and the degradation introduced by the compression of the bottleneck vector step, we first evaluated the model on $128 \times 128$ image patches. This evaluation was performed over a validation set of 50 batches. 
+We compared two specific configurations: reconstruction with and without the bottleneck compression.
+The quantitative results are summarized in Table ~\ref{tab:patch_metrics}.
+
+\begin{table}[h]
+\centering
+\caption{Patch-Level Reconstruction Metrics}
+\label{tab:patch_metrics}
+\begin{tabular}{lccc}
+\hline
+\textbf{Configuration} & \textbf{MSE} & \textbf{PSNR (dB)} & \textbf{SSIM} \\ \hline
+Bottleneck & 0.004155 & 23.81 & 0.7130 \\
+Compressed Bottleneck     & 0.004697 & 23.28 & 0.6785 \\ \hline
+\end{tabular}
+\end{table}
+
+As expected, introducing the bottleneck compression pipeline, and especially the quantization step, results in a slight decrease in image fidelity, as can be seen in Figure \ref{fig:patches_bottleneck_compression_comparison}. The PSNR drops by approximately 0.53 dB, and the SSIM decreases from 0.7130 to 0.6785. However, this degradation is relatively modest, indicating that our learned representations are robust for the use of bottleneck file size reduction.
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=\textwidth]{paper/data/basic_eval_comparison.png}
+  \caption{Bottleneck compression comparison. The first row shows the original patch. The second and third rows show the reconstructed bottleneck without and with compression, respectively.}
+  \label{fig:patches_bottleneck_compression_comparison}
+\end{figure*}
+
+\paragraph{Full-Image Compression Performance}
+While patch-level metrics are informative, practical applications require compressing arbitrary-sized full images. We evaluated our model's end-to-end performance on a dataset of 30 diverse images. For this evaluation, full-resolution images are seamlessly partitioned into non-overlapping $128 \times 128$ patches, processed independently by our compression model, and subsequently reassembled. A sample compressed image can be seen in Figure \ref{fig:compressed_image_patch_outlines}, with square outlines visible, marking the boundaries of the individual patches.
+We benchmarked our approach against the standard JPEG compression algorithm (configured at a high-quality setting of 95). We measured the compression ratio, bits per pixel (bpp), and reconstruction quality (PSNR, SSIM, and MSE). Average results are provided in Table \ref{tab:full_metrics}.
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=0.5\textwidth]{paper/data/basic_eval_3_reconstructed.png}
+  \caption{Compressed image. Unintended outlines marking the individual patches can be seen. As the patches are non-overlapping and processed independently, the model can never understand the wider context of the whole image.}
+  \label{fig:compressed_image_patch_outlines}
+\end{figure*}
+
+\begin{table}[h]
+\centering
+\caption{Average Full-Image Compression Metrics}
+\label{tab:full_metrics}
+\begin{tabular}{lccc}
+\hline
+\textbf{Method} & \textbf{MSE} & \textbf{PSNR (dB)} & \textbf{SSIM} \\ \hline
+Ours            & 0.004554 & 25.18 & 0.6670 \\
+JPEG (Q=95)     & 0.000227 & 38.57 & 0.9713 \\ \hline
+\end{tabular}
+\end{table}
+
+Furthermore, to provide a granular view of the compression tradeoffs, Table~\ref{tab:sample_images} details the performance on a representative subset of individual test images.
+
+\begin{table*}[p]
+\centering
+\caption{Sample Image Performance vs. JPEG Baseline}
+\label{tab:sample_images}
+\begin{tabular}{lccccccc}
+\hline
+\textbf{Image} & \textbf{Resolution} & \textbf{BPP} & \textbf{Size Reduction (KB)} & \textbf{Ratio (Ours)} & \textbf{Ratio (JPEG)} & \textbf{PSNR (Ours)} & \textbf{PSNR (JPEG)} \\ \hline
+img\_0 & $500 \times 333$ & 4.04 & 323 $\rightarrow$ 82 & 3.94x & 3.57x & 23.96 & 35.88 \\
+img\_1 & $500 \times 333$ & 4.09 & 317 $\rightarrow$ 83 & 3.82x & 3.24x & 22.22 & 30.42 \\
+img\_2 & $500 \times 375$ & 3.53 & 282 $\rightarrow$ 80 & 3.50x & 3.87x & 26.05 & 41.59 \\
+img\_3 & $500 \times 334$ & 3.91 & 231 $\rightarrow$ 79 & 2.90x & 4.15x & 27.21 & 43.34 \\
+img\_4 & $500 \times 375$ & 3.69 & 412 $\rightarrow$ 84 & 4.89x & 3.48x & 22.21 & 33.97 \\ \hline
+\end{tabular}
+\end{table*}
+
+
+\subsection{Discussion}
+Our evaluation demonstrates that the proposed implementation achieves distinctive file size reductions. On average, the compression factor ranges from 2.9x to 4.9x. For several images, our model achieves a higher compression ratio than the JPEG baseline at a quality level of 95. 
+
+However, the implemented architecture fails when compared to the JPEG baseline, which currently outperforms our approach in terms of standard distortion metrics (PSNR and SSIM). The average PSNR for our model across the dataset is 25.18 dB, compared to 38.57 dB for JPEG. 
 
 %\section{Conclusion}
 %Model based compression requires more processing power at inference, also showing differences %between architectures, depending on whether a CPU or GPU is used \cite{cheng_deep_2018}... 
