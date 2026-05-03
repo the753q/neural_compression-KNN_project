@@ -1,9 +1,11 @@
 from .basic_ae import BasicAE
 from .DCAL_2018 import DCAL_2018
+from .balle_2016 import Balle2016
 
 MODEL_REGISTRY = {
     "basic": BasicAE,
-    "DCAL_2018": DCAL_2018
+    "DCAL_2018": DCAL_2018,
+    "balle_2016": Balle2016
 }
 
 def get_model(model_name, **kwargs):
