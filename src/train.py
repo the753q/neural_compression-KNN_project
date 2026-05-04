@@ -1,11 +1,7 @@
 import os
-import lightning.pytorch as pl
 import torch
-from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger
-
 from data import ClassImagesDataModule, DF2KDataModule
-from models import get_model
+from models import get_train_function
 
 
 torch.set_float32_matmul_precision("medium")
@@ -37,58 +33,13 @@ def experiment1():
     EPOCHS = 15
     LEARNING_RATE = 2e-4
 
-    model = get_model(MODEL_NAME, learning_rate=LEARNING_RATE)
-
-    checkpoint_filename = f"{EXPERIMENT_NAME}-{MODEL_NAME}-best"
-
-    checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints/",
-        filename=checkpoint_filename,
-        save_top_k=1,
-        monitor="val_loss",
-        mode="min",
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
     )
 
-    trainer = pl.Trainer(
-        max_epochs=EPOCHS,
-        accelerator="auto",
-        precision="bf16-mixed",
-        callbacks=[checkpoint_callback],
-    )
-
-    print("=" * 30)
-    print(f"Started experiment: {EXPERIMENT_NAME}")
-
-    print(f"Starting training for {MODEL_NAME}...")
-    trainer.fit(model, datamodule_default_imagenet10k)
-    print(
-        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_filename)}.ckpt"
-    )
-
-    print(f"Finished experiment: {EXPERIMENT_NAME}")
-    print("=" * 30)
-
-    # compute latents for quantization
-    print("Computing priors...")
-    all_latents = []
-    model.eval()
-    device = next(model.parameters()).device
-    with torch.no_grad():
-        for batch in datamodule_default_imagenet10k.train_dataloader():
-            batch = batch.to(device)
-            z = model.encoder(batch)
-            all_latents.append(z)
-
-    all_latents = torch.cat(all_latents, dim=0)
-
-    # load best model weights
-    best_model = (model.__class__).load_from_checkpoint(
-        checkpoint_callback.best_model_path
-    )
-    best_model.to(device)
-    # compute priors from latents
-    best_model.compute_priors(all_latents)
     # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 
@@ -98,47 +49,16 @@ def experiment2():
     """
     EXPERIMENT_NAME = "dcal_df2k"
     MODEL_NAME = "DCAL_2018"
-    EPOCHS = 20
+    EPOCHS = 2
     LEARNING_RATE = 1e-4
 
-    model = get_model(MODEL_NAME, learning_rate=LEARNING_RATE)
-
-    checkpoint_filename = f"{EXPERIMENT_NAME}-{MODEL_NAME}-best"
-
-    checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints/",
-        filename=checkpoint_filename,
-        save_top_k=1,
-        monitor="val_loss",
-        mode="min",
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
     )
 
-    csv_logger = CSVLogger("logs/", name=EXPERIMENT_NAME)
-
-    trainer = pl.Trainer(
-        max_epochs=EPOCHS,
-        accelerator="auto",
-        callbacks=[checkpoint_callback],
-        logger=csv_logger,
-    )
-
-    print("=" * 30)
-    print(f"Started experiment: {EXPERIMENT_NAME}")
-
-    print(f"Starting training for {MODEL_NAME}...")
-    trainer.fit(model, datamodule_default_imagenet10k)
-    print(
-        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_filename)}"
-    )
-
-    print(f"Finished experiment: {EXPERIMENT_NAME}")
-    print("=" * 30)
-
-    # load best model weights
-    best_model = (model.__class__).load_from_checkpoint(
-        checkpoint_callback.best_model_path
-    )
     # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 

@@ -1,10 +1,11 @@
 # Deep Convolutional AutoEncoder-based Lossy Image Compression 2018
 import torch
 import torch.nn as nn
-
-from .base import BaseAutoencoder
 import torch.nn.functional as F
-
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger
+import os
 import constriction
 import numpy as np
 import dahuffman
@@ -93,9 +94,11 @@ class Decoder(nn.Module):
         x_concat = torch.cat([out1, out2, out3], dim=1)
         return self.final_merge(x_concat)
 
-class DCAL_2018(BaseAutoencoder):
+class DCAL_2018(pl.LightningModule):
     def __init__(self, learning_rate=1e-3):
-        super().__init__(learning_rate=learning_rate)
+        super().__init__()
+        self.save_hyperparameters()
+        self.name = "DCAL_2018"
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.quantization_bits = 8 # lower -> more compression
@@ -177,13 +180,6 @@ class DCAL_2018(BaseAutoencoder):
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
 
-        # hat_Y, hat_Cb, hat_Cr = torch.split(x_hat, 1, dim=1)
-        # x_Y, x_Cb, x_Cr = torch.split(x, 1, dim=1)
-        # loss = (    (6.0/8) * F.mse_loss(hat_Y, x_Y)
-        #             + (1.0/8) * F.mse_loss(hat_Cb, x_Cb)
-        #             + (1.0/8) * F.mse_loss(hat_Cr, x_Cr)
-        #             + self.rate_coeffitient*torch.mean(z ** 2) )
-        
         self.log("train_loss", loss, prog_bar=True)
         return loss
     
@@ -196,13 +192,10 @@ class DCAL_2018(BaseAutoencoder):
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
 
-        # hat_Y, hat_Cb, hat_Cr = torch.split(x_hat, 1, dim=1)
-        # x_Y, x_Cb, x_Cr = torch.split(x, 1, dim=1)
-        # loss = (    (6.0/8) * F.mse_loss(hat_Y, x_Y)
-        #     + (1.0/8) * F.mse_loss(hat_Cb, x_Cb)
-        #     + (1.0/8) * F.mse_loss(hat_Cr, x_Cr)
-        #     + self.rate_coeffitient*torch.mean(z ** 2) )
         self.log("val_loss", loss, prog_bar=True)
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
     def forward(self, x):
         x_hat, _= self.forward_get_latent(x)
@@ -272,3 +265,45 @@ class DCAL_2018(BaseAutoencoder):
         x_hat = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
 
         return (x_hat, compressed_payload)
+
+
+def train_model(datamodule, experiment_name, epochs, learning_rate):
+    model = DCAL_2018(learning_rate=learning_rate)
+
+    checkpoint_filename = f"{experiment_name}-{model.name}-best"
+
+    checkpoint_callback = ModelCheckpoint(
+        dirpath="checkpoints/",
+        filename=checkpoint_filename,
+        save_top_k=1,
+        monitor="val_loss",
+        mode="min",
+    )
+
+    csv_logger = CSVLogger("logs/", name=experiment_name)
+
+    trainer = pl.Trainer(
+        max_epochs=epochs,
+        accelerator="auto",
+        precision="bf16-mixed",
+        callbacks=[checkpoint_callback],
+        logger=csv_logger,
+    )
+
+    print("=" * 30)
+    print(f"Started experiment: {experiment_name}")
+
+    print(f"Starting training for {model.name}...")
+    trainer.fit(model, datamodule)
+
+    # load best model weights
+    best_model = DCAL_2018.load_from_checkpoint(checkpoint_callback.best_model_path)
+
+    print(
+        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_callback.best_model_path)}"
+    )
+
+    print(f"Finished experiment: {experiment_name}")
+    print("=" * 30)
+
+    return best_model
