@@ -9,6 +9,7 @@ import os
 import constriction
 import numpy as np
 import dahuffman
+from utils import ImagePatcher, rgb_to_ycbcr, ycbcr_to_rgb
 
 
 class DownBranch(nn.Module):
@@ -265,6 +266,58 @@ class DCAL_2018(pl.LightningModule):
         x_hat = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
 
         return (x_hat, compressed_payload)
+
+    def evaluate_image(self, x):
+        """
+        Standardized evaluation method.
+        x: (C, H, W) tensor (RGB)
+        Returns: dict with reconstructions and compressed data.
+        """
+        device = next(self.parameters()).device
+        x = x.to(device)
+        
+        # Convert to YCbCr for processing if input is RGB
+        # We assume 3 channels means RGB unless specified otherwise
+        x_ycbcr = rgb_to_ycbcr(x)
+        
+        # We use patches of 128x128 for evaluation to match training/memory constraints
+        patcher = ImagePatcher(patch_size=128)
+        patches, positions, original_size = patcher.create_patches(x_ycbcr)
+        
+        reconstructions = []
+        reconstructions_cae = []
+        total_compressed_data = b""
+        
+        for i in range(patches.shape[0]):
+            patch = patches[i:i+1] # (1, C, P, P)
+            with torch.no_grad():
+                recon, compressed = self.forward_get_latent(patch)
+                recon_cae = self.forward_just_cae(patch)
+                
+            reconstructions.append(recon.squeeze(0))
+            reconstructions_cae.append(recon_cae.squeeze(0))
+            
+            # If compressed is a list/numpy, convert to bytes for consistent size calculation
+            if isinstance(compressed, np.ndarray):
+                total_compressed_data += compressed.tobytes()
+            elif isinstance(compressed, list):
+                total_compressed_data += bytes(compressed)
+            else:
+                total_compressed_data += compressed
+
+        # Combine patches back into full image
+        full_reconstruction_ycbcr = patcher.combine_patches(original_size, positions, torch.stack(reconstructions))
+        full_reconstruction_cae_ycbcr = patcher.combine_patches(original_size, positions, torch.stack(reconstructions_cae))
+        
+        # Convert back to RGB for the final output
+        full_reconstruction = ycbcr_to_rgb(full_reconstruction_ycbcr)
+        full_reconstruction_cae = ycbcr_to_rgb(full_reconstruction_cae_ycbcr)
+        
+        return {
+            "reconstruction": full_reconstruction,
+            "cae_reconstruction": full_reconstruction_cae,
+            "compressed_payload": total_compressed_data
+        }
 
 
 def train_model(datamodule, experiment_name, epochs, learning_rate):

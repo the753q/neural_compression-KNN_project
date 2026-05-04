@@ -5,6 +5,7 @@ import io
 import constriction
 import numpy as np
 import dahuffman
+from utils import ImagePatcher
 
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -159,6 +160,11 @@ class BasicAE(pl.LightningModule):
         x_hat, _= self.forward_get_latent(x)
         return x_hat
 
+    def forward_just_cae(self, x):
+        z = self.pass_to_encoders(x)
+        x_hat = self.pass_to_decoders(z)
+        return x_hat
+
     def forward_get_latent(self, x):
         # z = self.encoder(x)
         z = self.pass_to_encoders(x)
@@ -186,6 +192,50 @@ class BasicAE(pl.LightningModule):
         x_hat = self.pass_to_decoders(z_inv_rot)
 
         return (x_hat, z_compressed_data)
+
+    def evaluate_image(self, x):
+        """
+        Standardized evaluation method.
+        x: (C, H, W) tensor
+        Returns: dict with reconstructions and compressed data.
+        """
+        device = next(self.parameters()).device
+        x = x.to(device)
+        
+        # We use patches of 128x128 for evaluation to match training/memory constraints
+        patcher = ImagePatcher(patch_size=128)
+        patches, positions, original_size = patcher.create_patches(x)
+        
+        reconstructions = []
+        reconstructions_cae = []
+        total_compressed_data = b""
+        
+        for i in range(patches.shape[0]):
+            patch = patches[i:i+1] # (1, C, P, P)
+            with torch.no_grad():
+                recon, compressed = self.forward_get_latent(patch)
+                recon_cae = self.forward_just_cae(patch)
+                
+            reconstructions.append(recon.squeeze(0))
+            reconstructions_cae.append(recon_cae.squeeze(0))
+            
+            # If compressed is a list/numpy, convert to bytes for consistent size calculation
+            if isinstance(compressed, np.ndarray):
+                total_compressed_data += compressed.tobytes()
+            elif isinstance(compressed, list):
+                total_compressed_data += bytes(compressed)
+            else:
+                total_compressed_data += compressed
+
+        # Combine patches back into full image
+        full_reconstruction = patcher.combine_patches(original_size, positions, torch.stack(reconstructions))
+        full_reconstruction_cae = patcher.combine_patches(original_size, positions, torch.stack(reconstructions_cae))
+        
+        return {
+            "reconstruction": full_reconstruction,
+            "cae_reconstruction": full_reconstruction_cae,
+            "compressed_payload": total_compressed_data
+        }
 
 
 def train_model(datamodule, experiment_name, epochs, learning_rate):
