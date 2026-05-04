@@ -5,8 +5,12 @@ import io
 import constriction
 import numpy as np
 import dahuffman
+from utils import ImagePatcher
 
-from .base import BaseAutoencoder
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger
+import os
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -39,9 +43,10 @@ class Decoder(nn.Module):
         x = torch.sigmoid(self.deconv3(x))
         return x
 
-class BasicAE(BaseAutoencoder):
+class BasicAE(pl.LightningModule):
     def __init__(self, learning_rate=1e-3):
-        super().__init__(learning_rate=learning_rate)
+        super().__init__()
+        self.save_hyperparameters()
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.name = "BasicAE"
@@ -105,7 +110,18 @@ class BasicAE(BaseAutoencoder):
         x_reconstructed = (x / 2**(B-1))
         return x_reconstructed
 
-    def compute_priors(self, all_latents):
+    def compute_priors(self, dataloader):
+        print("Computing priors...")
+        all_latents = []
+        self.eval()
+        device = next(self.parameters()).device
+        with torch.no_grad():
+            for batch in dataloader:
+                batch = batch.to(device)
+                z = self.pass_to_encoders(batch)
+                all_latents.append(z)
+
+        all_latents = torch.cat(all_latents, dim=0)
         z_means = all_latents.mean(dim=0)
         z_stds = all_latents.std(dim=0)
         self.register_buffer('z_means', z_means)
@@ -137,8 +153,16 @@ class BasicAE(BaseAutoencoder):
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
         self.log("val_loss", loss, prog_bar=True)
 
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+
     def forward(self, x):
         x_hat, _= self.forward_get_latent(x)
+        return x_hat
+
+    def forward_just_cae(self, x):
+        z = self.pass_to_encoders(x)
+        x_hat = self.pass_to_decoders(z)
         return x_hat
 
     def forward_get_latent(self, x):
@@ -168,3 +192,92 @@ class BasicAE(BaseAutoencoder):
         x_hat = self.pass_to_decoders(z_inv_rot)
 
         return (x_hat, z_compressed_data)
+
+    def evaluate_image(self, x):
+        """
+        Standardized evaluation method.
+        x: (C, H, W) tensor
+        Returns: dict with reconstructions and compressed data.
+        """
+        device = next(self.parameters()).device
+        x = x.to(device)
+        
+        # We use patches of 128x128 for evaluation to match training/memory constraints
+        patcher = ImagePatcher(patch_size=128)
+        patches, positions, original_size = patcher.create_patches(x)
+        
+        reconstructions = []
+        reconstructions_cae = []
+        total_compressed_data = b""
+        
+        for i in range(patches.shape[0]):
+            patch = patches[i:i+1] # (1, C, P, P)
+            with torch.no_grad():
+                recon, compressed = self.forward_get_latent(patch)
+                recon_cae = self.forward_just_cae(patch)
+                
+            reconstructions.append(recon.squeeze(0))
+            reconstructions_cae.append(recon_cae.squeeze(0))
+            
+            # If compressed is a list/numpy, convert to bytes for consistent size calculation
+            if isinstance(compressed, np.ndarray):
+                total_compressed_data += compressed.tobytes()
+            elif isinstance(compressed, list):
+                total_compressed_data += bytes(compressed)
+            else:
+                total_compressed_data += compressed
+
+        # Combine patches back into full image
+        full_reconstruction = patcher.combine_patches(original_size, positions, torch.stack(reconstructions))
+        full_reconstruction_cae = patcher.combine_patches(original_size, positions, torch.stack(reconstructions_cae))
+        
+        return {
+            "reconstruction": full_reconstruction,
+            "cae_reconstruction": full_reconstruction_cae,
+            "compressed_payload": total_compressed_data
+        }
+
+
+def train_model(datamodule, experiment_name, epochs, learning_rate):
+    model = BasicAE(learning_rate=learning_rate)
+
+    checkpoint_filename = f"{experiment_name}-{model.name}-best"
+
+    checkpoint_callback = ModelCheckpoint(
+        dirpath="checkpoints/",
+        filename=checkpoint_filename,
+        save_top_k=1,
+        monitor="val_loss",
+        mode="min",
+    )
+
+    csv_logger = CSVLogger("logs/", name=experiment_name)
+
+    trainer = pl.Trainer(
+        max_epochs=epochs,
+        accelerator="auto",
+        precision="bf16-mixed",
+        callbacks=[checkpoint_callback],
+        logger=csv_logger,
+    )
+
+    print("=" * 30)
+    print(f"Started experiment: {experiment_name}")
+
+    print(f"Starting training for {model.name}...")
+    trainer.fit(model, datamodule)
+
+    # load best model weights
+    best_model = BasicAE.load_from_checkpoint(checkpoint_callback.best_model_path)
+
+    # compute priors from latents
+    best_model.compute_priors(datamodule.train_dataloader())
+
+    print(
+        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_callback.best_model_path)}"
+    )
+
+    print(f"Finished experiment: {experiment_name}")
+    print("=" * 30)
+
+    return best_model
