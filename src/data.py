@@ -8,6 +8,24 @@ from torchvision.datasets import ImageFolder
 import torch
 import torch.nn as nn
 
+class TransformDataset(Dataset):
+    def __init__(self, dataset, transform=None):
+        self.dataset = dataset
+        self.transform = transform
+
+    def __getitem__(self, index):
+        sample = self.dataset[index]
+        # ImageFolder returns (sample, target), we only care about sample (image)
+        if isinstance(sample, tuple):
+            sample = sample[0]
+            
+        if self.transform:
+            sample = self.transform(sample)
+        return sample, 0 # Return 0 as dummy target
+
+    def __len__(self):
+        return len(self.dataset)
+
 def subset_dataset(dataset, limit):
     if limit is None or limit >= len(dataset):
         return dataset
@@ -39,18 +57,23 @@ class DataModuleBase(pl.LightningDataModule):
         self.ycbcr = ycbcr
         self.patch_size = patch_size
 
-        assert not ((not random_crop) and (batch_size > 1)), "Can't combine images of various sizes in one batch."
-
-        t = []
+        # Train transform: with random crop if requested
+        t_train = []
         if random_crop:
-            t.append(transforms.RandomCrop((self.patch_size, self.patch_size)))
+            t_train.append(transforms.RandomCrop((self.patch_size, self.patch_size)))
         if ycbcr:
-            t.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
-        t.append(transforms.ToTensor())
+            t_train.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
+        t_train.append(transforms.ToTensor())
+        self.train_transform = transforms.Compose(t_train)
 
-        self.transform = transforms.Compose(t)
+        # Val/Test transform: NO random crop
+        t_val = []
+        if ycbcr:
+            t_val.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
+        t_val.append(transforms.ToTensor())
+        self.val_transform = transforms.Compose(t_val)
         
-        self.collate_fn=lambda batch: torch.stack([img for img, _ in batch])
+        self.collate_fn = lambda batch: torch.stack([img for img, _ in batch])
 
     def setup(self, x):
         raise NotImplementedError("Subclasses must implement this method.")
@@ -62,12 +85,15 @@ class DataModuleBase(pl.LightningDataModule):
 
     def val_dataloader(self):
         assert hasattr(self, 'val_ds')
-        return DataLoader(self.val_ds, batch_size=self.batch_size, shuffle=False,
+        # If we are not cropping, we must use batch_size=1 for varying image sizes
+        bs = self.batch_size if not self.random_crop else 1
+        return DataLoader(self.val_ds, batch_size=bs, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
 
     def test_dataloader(self):
         assert hasattr(self, 'test_ds')
-        return DataLoader(self.test_ds, batch_size=self.batch_size, shuffle=False,
+        bs = self.batch_size if not self.random_crop else 1
+        return DataLoader(self.test_ds, batch_size=bs, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
 
 class ClassImagesDataModule(DataModuleBase):
@@ -78,17 +104,24 @@ class ClassImagesDataModule(DataModuleBase):
         self.data_dir = data_dir
 
     def setup(self, stage=None):
-        dataset = ImageFolder(self.data_dir, transform=self.transform)
+        dataset = ImageFolder(self.data_dir, transform=None)
 
-        dataset = Subset(dataset, [
-            i for i, (path, _) in enumerate(dataset.samples)
+        # Filter images smaller than patch size if cropping is enabled
+        if self.random_crop:
+            indices = [
+                i for i, (path, _) in enumerate(dataset.samples)
                 if min(Image.open(path).size) >= self.patch_size
-        ]) # remove images smaller than patch size
+            ]
+            dataset = Subset(dataset, indices)
 
-        self.train_ds, self.val_ds, self.test_ds = random_split(
-            dataset, [0.8, 0.1, 0.1],
+        train_indices, val_indices, test_indices = random_split(
+            range(len(dataset)), [0.8, 0.1, 0.1],
             generator=torch.Generator().manual_seed(42)
         )
+
+        self.train_ds = TransformDataset(Subset(dataset, train_indices), transform=self.train_transform)
+        self.val_ds   = TransformDataset(Subset(dataset, val_indices),   transform=self.val_transform)
+        self.test_ds  = TransformDataset(Subset(dataset, test_indices),  transform=self.val_transform)
     
 class DF2KDataModule(DataModuleBase):
     def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size = 256):
@@ -99,12 +132,14 @@ class DF2KDataModule(DataModuleBase):
         self.test_dir = test_dir
 
     def setup(self, stage=None):
-        train_dataset = ImageFolder(self.train_dir, transform=self.transform)
-        test_dataset   = ImageFolder(self.test_dir,   transform=self.transform)
+        train_dataset_raw = ImageFolder(self.train_dir, transform=None)
+        test_dataset_raw  = ImageFolder(self.test_dir,   transform=None)
 
-        self.test_ds = test_dataset
-        
-        self.train_ds, self.val_ds = random_split(
-            train_dataset, [0.9, 0.1],
+        train_indices, val_indices = random_split(
+            range(len(train_dataset_raw)), [0.9, 0.1],
             generator=torch.Generator().manual_seed(42)
         )
+
+        self.train_ds = TransformDataset(Subset(train_dataset_raw, train_indices), transform=self.train_transform)
+        self.val_ds   = TransformDataset(Subset(train_dataset_raw, val_indices),   transform=self.val_transform)
+        self.test_ds  = TransformDataset(test_dataset_raw, transform=self.val_transform)

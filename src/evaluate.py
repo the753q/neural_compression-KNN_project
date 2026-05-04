@@ -204,7 +204,6 @@ def eval_compression(model, evaluation_name, datamodule):
 
     img_comp_metrics_ours = ImageComparisonMetrics("original", "compressed (ours)")
     img_comp_metrics_jpeg = ImageComparisonMetrics("original", "compressed (jpeg)")
-    img_patcher = ImagePatcher(patch_size=128)
 
     compression_metrics = []
 
@@ -214,38 +213,24 @@ def eval_compression(model, evaluation_name, datamodule):
         if i + 1 > N_IMAGES:
             break
 
-        if datamodule.ycbcr:
-            img = TF.to_pil_image(batch_tensor[0], mode="YCbCr")
-        else:
-            img = TF.to_pil_image(batch_tensor[0], mode="RGB")
-
-        patches = img_patcher.create_patches(img)
-
-        transform = transforms.ToTensor()
-        patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(
-            device
-        )
-
+        batch_tensor = batch_tensor.to(device)
         with torch.no_grad():
-            reconstructions, bottleneck = model.forward_get_latent(patches_batch)
+            reconstruction, bottleneck = model.forward_get_latent(batch_tensor)
 
+        # reconstruction is [1, 3, H, W]
+        reconstruction = reconstruction[0]
+        
         if datamodule.ycbcr:
-            reconstructions = torch.stack(
-                [
-                    TF.to_tensor(TF.to_pil_image(img, mode="YCbCr").convert("RGB"))
-                    for img in reconstructions
-                ]
-            )
+            img = TF.to_pil_image(batch_tensor[0].cpu(), mode="YCbCr")
+            reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="YCbCr").convert("RGB")
+        else:
+            img = TF.to_pil_image(batch_tensor[0].cpu(), mode="RGB")
+            reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="RGB")
 
         # at this point work with rgb original
         img = img.convert("RGB")
 
-        reconstructed = img_patcher.combine_patches(
-            img.size,
-            [(x, y) for (x, y), _ in patches],
-            [transforms.ToPILImage()(r.cpu()) for r in reconstructions],
-        )
-
+        transform = transforms.ToTensor()
         img_comp_metrics_ours.update(
             transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0)
         )
@@ -348,89 +333,109 @@ def load_model_from_checkpoint(model_name, model_checkpoint):
     return model
 
 
-def eval_pareto(model, evaluation_name, datamodule):
+def eval_pareto(model_name, checkpoint_paths, evaluation_name, datamodule):
+    """
+    Evaluates a Pareto front (RD curve).
+    If checkpoint_paths is a list, it evaluates each checkpoint as one point.
+    If checkpoint_paths is a single path and the model supports quantization_bits, 
+    it evaluates multiple bits for that one model.
+    """
     assert datamodule.batch_size == 1
 
     datamodule.setup()
     val_loader = datamodule.val_dataloader()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    print("Running Pareto evaluation...\n")
-
-    device = next(model.parameters()).device
-
-    N_IMAGES = 30
-    q_bits_list = [2, 3, 4, 5, 6, 7, 8]
+    print(f"Running Pareto evaluation for {model_name}...\n")
 
     bpps = []
     psnrs = []
     ssims = []
 
-    for q_bits in q_bits_list:
-        model.quantization_bits = q_bits
-        print(f"Evaluating with quantization_bits={q_bits}...")
+    # If it's a list of checkpoints, we get one point per checkpoint
+    if isinstance(checkpoint_paths, list):
+        for ckpt in checkpoint_paths:
+            print(f"Evaluating checkpoint: {ckpt}")
+            model = torch.load(ckpt, weights_only=False).to(device)
+            model.eval()
 
-        img_comp_metrics_ours = ImageComparisonMetrics("original", f"ours q={q_bits}")
-        img_patcher = ImagePatcher(patch_size=128)
+            img_comp_metrics_ours = ImageComparisonMetrics("original", f"ours {os.path.basename(ckpt)}")
+            total_bpp = 0.0
+            bpp_count = 0
 
-        total_bpp = 0.0
-        bpp_count = 0
+            N_IMAGES = 30
+            for i, batch_tensor in enumerate(val_loader):
+                if i + 1 > N_IMAGES:
+                    break
 
-        for i, batch_tensor in enumerate(val_loader):
-            if i + 1 > N_IMAGES:
-                break
+                batch_tensor = batch_tensor.to(device)
+                with torch.no_grad():
+                    reconstruction, bottleneck = model.forward_get_latent(batch_tensor)
 
-            if datamodule.ycbcr:
-                img = TF.to_pil_image(batch_tensor[0], mode="YCbCr")
-            else:
-                img = TF.to_pil_image(batch_tensor[0], mode="RGB")
+                reconstruction = reconstruction[0]
+                if datamodule.ycbcr:
+                    img = TF.to_pil_image(batch_tensor[0].cpu(), mode="YCbCr").convert("RGB")
+                    reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="YCbCr").convert("RGB")
+                else:
+                    img = TF.to_pil_image(batch_tensor[0].cpu(), mode="RGB")
+                    reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="RGB")
 
-            patches = img_patcher.create_patches(img)
-            transform = transforms.ToTensor()
-            patches_batch = torch.stack([transform(patch) for _, patch in patches]).to(
-                device
-            )
-
-            with torch.no_grad():
-                reconstructions, bottleneck = model.forward_get_latent(patches_batch)
-
-            if datamodule.ycbcr:
-                reconstructions = torch.stack(
-                    [
-                        TF.to_tensor(
-                            TF.to_pil_image(r_img, mode="YCbCr").convert("RGB")
-                        )
-                        for r_img in reconstructions
-                    ]
+                transform = transforms.ToTensor()
+                img_comp_metrics_ours.update(
+                    transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0)
                 )
 
-            img = img.convert("RGB")
-            reconstructed = img_patcher.combine_patches(
-                img.size,
-                [(x, y) for (x, y), _ in patches],
-                [transforms.ToPILImage()(r.cpu()) for r in reconstructions],
-            )
+                size_after = len(bottleneck)
+                bpp = (size_after * 8.0) / (img.size[0] * img.size[1])
+                total_bpp += bpp
+                bpp_count += 1
 
-            img_comp_metrics_ours.update(
-                transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0)
-            )
+            img_comp_metrics_ours.finilize()
+            bpps.append(total_bpp / bpp_count)
+            psnrs.append(img_comp_metrics_ours.avg_psnr)
+            ssims.append(img_comp_metrics_ours.avg_ssim)
+    else:
+        # Single model evaluation with varying quantization_bits (for BasicAE)
+        model = torch.load(checkpoint_paths, weights_only=False).to(device)
+        model.eval()
+        q_bits_list = [2, 3, 4, 5, 6, 7, 8]
+        for q_bits in q_bits_list:
+            if hasattr(model, 'quantization_bits'):
+                model.quantization_bits = q_bits
+            print(f"Evaluating with quantization_bits={q_bits}...")
 
-            size_after = len(bottleneck)
-            bpp = (size_after * 8.0) / (img.size[0] * img.size[1])
-            total_bpp += bpp
-            bpp_count += 1
+            img_comp_metrics_ours = ImageComparisonMetrics("original", f"ours q={q_bits}")
+            total_bpp = 0.0
+            bpp_count = 0
 
-        img_comp_metrics_ours.finilize()
-        avg_bpp = total_bpp / bpp_count
-        avg_psnr = img_comp_metrics_ours.avg_psnr
-        avg_ssim = img_comp_metrics_ours.avg_ssim
+            N_IMAGES = 30
+            for i, batch_tensor in enumerate(val_loader):
+                if i + 1 > N_IMAGES:
+                    break
+                batch_tensor = batch_tensor.to(device)
+                with torch.no_grad():
+                    reconstruction, bottleneck = model.forward_get_latent(batch_tensor)
+                
+                reconstruction = reconstruction[0]
+                if datamodule.ycbcr:
+                    img = TF.to_pil_image(batch_tensor[0].cpu(), mode="YCbCr").convert("RGB")
+                    reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="YCbCr").convert("RGB")
+                else:
+                    img = TF.to_pil_image(batch_tensor[0].cpu(), mode="RGB")
+                    reconstructed = TF.to_pil_image(reconstruction.cpu(), mode="RGB")
 
-        print(
-            f"q_bits={q_bits}: BPP={avg_bpp:.4f}, PSNR={avg_psnr:.4f}, SSIM={avg_ssim:.4f}"
-        )
+                transform = transforms.ToTensor()
+                img_comp_metrics_ours.update(
+                    transform(img).unsqueeze(0), transform(reconstructed).unsqueeze(0)
+                )
+                size_after = len(bottleneck)
+                total_bpp += (size_after * 8.0) / (img.size[0] * img.size[1])
+                bpp_count += 1
 
-        bpps.append(avg_bpp)
-        psnrs.append(avg_psnr)
-        ssims.append(avg_ssim)
+            img_comp_metrics_ours.finilize()
+            bpps.append(total_bpp / bpp_count)
+            psnrs.append(img_comp_metrics_ours.avg_psnr)
+            ssims.append(img_comp_metrics_ours.avg_ssim)
 
     print("Running JPEG baseline...")
     jpeg_qualities = [10, 20, 30, 40, 50, 60, 70, 80, 90]
@@ -541,17 +546,24 @@ def main():
     # basic_model = load_model_from_checkpoint("basic", "checkpoints/basic_imagenet10k-basic-best-v1.ckpt")
 
     if False:
-        basic_model = torch.load("checkpoints/manual/basic_best.pt", weights_only=False)
+        basic_ckpt = "checkpoints/manual/basic_best.pt"
+        basic_model = torch.load(basic_ckpt, weights_only=False)
         eval_patches(basic_model, "basic_eval", datamodule_imagenet10k_crop)
         eval_compression(basic_model, "basic_eval", datamodule_imagenet10k_no_crop)
-        eval_pareto(basic_model, "basic_eval", datamodule_imagenet10k_no_crop)
+        eval_pareto("basic", basic_ckpt, "basic_eval", datamodule_imagenet10k_no_crop)
     else:
-        dcal_model = torch.load(
-            "checkpoints/manual/DCAL_2018_best_50epoch.pt", weights_only=False
-        )
-        eval_patches(dcal_model, "basic_eval", datamodule_imagenet10k_crop)
-        eval_compression(dcal_model, "basic_eval", datamodule_imagenet10k_no_crop)
-        eval_pareto(dcal_model, "basic_eval", datamodule_imagenet10k_no_crop)
+        # For Balle 2016, we evaluate a list of checkpoints for the Pareto front
+        # TODO: Add more checkpoints here as you train them with different lambdas
+        balle_checkpoints = [
+            "checkpoints/manual/balle_2016_best.pt",
+            # "checkpoints/manual/balle_2016_lambda_0.01.pt",
+            # "checkpoints/manual/balle_2016_lambda_0.05.pt",
+        ]
+        
+        main_model = torch.load(balle_checkpoints[0], weights_only=False)
+        eval_patches(main_model, "balle", datamodule_imagenet10k_crop)
+        eval_compression(main_model, "balle", datamodule_imagenet10k_no_crop)
+        eval_pareto("balle_2016", balle_checkpoints, "balle", datamodule_imagenet10k_no_crop)
 
     # eval_patches("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_default_concat)
     # eval_compression("DCAL_2018", "checkpoints/dcal_combined-DCAL_2018-best.ckpt", datamodule_no_crop_concat)

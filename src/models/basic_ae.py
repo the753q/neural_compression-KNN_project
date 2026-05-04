@@ -47,8 +47,9 @@ class BasicAE(BaseAutoencoder):
         self.name = "BasicAE"
         self.quantization_bits = 8 # lower -> more compression
         self.rate_coeffitient = 1.0  # higher -> more compression
+        self.stride_requirement = 8
         assert self.rate_coeffitient >= 0.0
-    
+
     def pass_to_encoders(self, x):
         encoded = self.encoder(x)
         return encoded
@@ -113,14 +114,13 @@ class BasicAE(BaseAutoencoder):
 
     def training_step(self, batch, batch_idx):
         x = batch
-        z = self.pass_to_encoders(x)
-        #z = self.encoder(x)
-
+        x_padded, _ = self._pad(x)
+        z = self.pass_to_encoders(x_padded)
         # add uniform noise to simulate quantization
         noise = torch.zeros_like(z).uniform_(-(1.0/1024.0), 1.0/1024.0)
 
-        # x_hat = self.decoder(z+noise)
-        x_hat = self.pass_to_decoders(z+noise)
+        x_hat_padded = self.pass_to_decoders(z+noise)
+        x_hat = self._unpad(x_hat_padded, x.shape[-2:])
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
         
@@ -129,21 +129,27 @@ class BasicAE(BaseAutoencoder):
     
     def validation_step(self, batch, batch_idx):
         x = batch
-        # z = self.encoder(x)
-        z = self.pass_to_encoders(x)
-        # x_hat = self.decoder(z)
-        x_hat = self.pass_to_decoders(z)
+        x_padded, _ = self._pad(x)
+        z = self.pass_to_encoders(x_padded)
+        x_hat_padded = self.pass_to_decoders(z)
+        x_hat = self._unpad(x_hat_padded, x.shape[-2:])
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
         self.log("val_loss", loss, prog_bar=True)
+
+    def forward_just_cae(self, x):
+        x_padded, orig_size = self._pad(x)
+        z = self.pass_to_encoders(x_padded)
+        x_hat_padded = self.pass_to_decoders(z)
+        return self._unpad(x_hat_padded, orig_size)
 
     def forward(self, x):
         x_hat, _= self.forward_get_latent(x)
         return x_hat
 
     def forward_get_latent(self, x):
-        # z = self.encoder(x)
-        z = self.pass_to_encoders(x)
+        x_padded, orig_size = self._pad(x)
+        z = self.pass_to_encoders(x_padded)
         z_rot = self.pca_rotation(z)
         z_q = self.quantizer(z_rot)
 
@@ -152,9 +158,7 @@ class BasicAE(BaseAutoencoder):
             z_compressed = self.entropy_coder(z_q)
             original_shape = z_q.shape
             z_decompressed = self.entropy_decoder(z_compressed, original_shape)
-            #
             z_compressed_data = z_compressed.tobytes()
-            #
         else:
             symbols = z_q.cpu().numpy().astype(np.int32).flatten()
             codec = dahuffman.HuffmanCodec.from_data(symbols)
@@ -164,7 +168,7 @@ class BasicAE(BaseAutoencoder):
 
         z_deq = self.dequantizer(z_decompressed)
         z_inv_rot = self.pca_inverse(z_deq)
-        # x_hat = self.decoder(z_inv_rot)
-        x_hat = self.pass_to_decoders(z_inv_rot)
+        x_hat_padded = self.pass_to_decoders(z_inv_rot)
+        x_hat = self._unpad(x_hat_padded, orig_size)
 
         return (x_hat, z_compressed_data)

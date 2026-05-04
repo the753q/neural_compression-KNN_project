@@ -100,7 +100,36 @@ class DCAL_2018(BaseAutoencoder):
         self.decoder = Decoder()
         self.quantization_bits = 8 # lower -> more compression
         self.rate_coeffitient = 1.0  # higher -> more compression
+        self.stride_requirement = 8
+        self.eval_patch_size = 128
         assert self.rate_coeffitient >= 0.0
+
+    def _tile(self, x, patch_size):
+        B, C, H, W = x.shape
+        # Pad to multiple of patch_size
+        pad_h = (patch_size - H % patch_size) % patch_size
+        pad_w = (patch_size - W % patch_size) % patch_size
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, (0, pad_w, 0, pad_h), mode='reflect')
+        
+        # Unfold into patches
+        patches = x.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+        # patches: [B, C, n_h, n_w, patch_size, patch_size]
+        n_h, n_w = patches.shape[2], patches.shape[3]
+        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+        # patches: [B, n_h, n_w, C, patch_size, patch_size]
+        patches = patches.view(-1, C, patch_size, patch_size)
+        return patches, (B, n_h, n_w, H, W)
+
+    def _untile(self, patches, info):
+        B, n_h, n_w, H, W = info
+        C = patches.shape[1]
+        patch_size = patches.shape[2]
+        
+        reconstructed = patches.view(B, n_h, n_w, C, patch_size, patch_size)
+        reconstructed = reconstructed.permute(0, 3, 1, 4, 2, 5).contiguous()
+        reconstructed = reconstructed.view(B, C, n_h * patch_size, n_w * patch_size)
+        return reconstructed[:, :, :H, :W]
 
     def entropy_coder(self, x):
         symbols = x.cpu().numpy().astype(np.int32).flatten()
@@ -166,14 +195,18 @@ class DCAL_2018(BaseAutoencoder):
 
     def training_step(self, batch, batch_idx):
         x = batch
-        z_y, z_cb, z_cr = self.encoder(x)
+        # Tile into fixed size patches if needed (training usually already has them)
+        patches, info = self._tile(x, self.eval_patch_size)
+        
+        z_y, z_cb, z_cr = self.encoder(patches)
 
         # add uniform noise to simulate quantization
         z = torch.cat([z_y, z_cb, z_cr], dim=1)
         noise = torch.zeros_like(z).uniform_(-(1.0/1024.0), 1.0/1024.0)
         z_y, z_cb, z_cr = torch.split(z+noise, 32, dim=1)
 
-        x_hat = self.decoder(z_y, z_cb, z_cr)
+        x_hat_patches = self.decoder(z_y, z_cb, z_cr)
+        x_hat = self._untile(x_hat_patches, info)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
 
@@ -189,10 +222,13 @@ class DCAL_2018(BaseAutoencoder):
     
     def validation_step(self, batch, batch_idx):
         x = batch
-        z_y, z_cb, z_cr = self.encoder(x)
+        patches, info = self._tile(x, self.eval_patch_size)
+        
+        z_y, z_cb, z_cr = self.encoder(patches)
         z = torch.cat([z_y, z_cb, z_cr], dim=1)
 
-        x_hat = self.decoder(z_y, z_cb, z_cr)
+        x_hat_patches = self.decoder(z_y, z_cb, z_cr)
+        x_hat = self._untile(x_hat_patches, info)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
 
@@ -209,12 +245,14 @@ class DCAL_2018(BaseAutoencoder):
         return x_hat
 
     def forward_just_cae(self, x):
-        z_Y, z_Cb, z_Cr = self.encoder(x)
-        x_hat = self.decoder(z_Y, z_Cb, z_Cr)
-        return x_hat
+        patches, info = self._tile(x, self.eval_patch_size)
+        z_Y, z_Cb, z_Cr = self.encoder(patches)
+        x_hat_patches = self.decoder(z_Y, z_Cb, z_Cr)
+        return self._untile(x_hat_patches, info)
 
     def forward_get_latent(self, x):
-        z_Y, z_Cb, z_Cr = self.encoder(x)
+        patches, info = self._tile(x, self.eval_patch_size)
+        z_Y, z_Cb, z_Cr = self.encoder(patches)
 
         # PCA rotation
         z_rot_Y, U_Y = self.pca_rotation(z_Y)
@@ -269,6 +307,7 @@ class DCAL_2018(BaseAutoencoder):
         z_inv_pca_Cb = self.pca_inverse(z_rec_Cb, U_rec_Cb)
         z_inv_pca_Cr = self.pca_inverse(z_rec_Cr, U_rec_Cr)
 
-        x_hat = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
+        x_hat_patches = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
+        x_hat = self._untile(x_hat_patches, info)
 
         return (x_hat, compressed_payload)

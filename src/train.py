@@ -141,11 +141,60 @@ def experiment2():
     # save model as torch object
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
+def experiment3():
+    """
+    Train balle_2016 on ImageNet..
+    """
+    EXPERIMENT_NAME = "balle_2016_imagenet"
+    MODEL_NAME = "balle_2016"
+    EPOCHS = 10
+    LEARNING_RATE = 1e-4
+
+    model = get_model(MODEL_NAME, learning_rate=LEARNING_RATE)
+
+    checkpoint_filename = f"{EXPERIMENT_NAME}-{MODEL_NAME}-best"
+
+    checkpoint_callback = ModelCheckpoint(
+        dirpath="checkpoints/",
+        filename=checkpoint_filename,
+        save_top_k=1,
+        monitor="val_loss",
+        mode="min",
+    )
+
+    csv_logger = CSVLogger("logs/", name=EXPERIMENT_NAME)
+
+    trainer = pl.Trainer(
+        max_epochs=EPOCHS,
+        accelerator="auto",
+        callbacks=[checkpoint_callback],
+        logger=csv_logger,
+    )
+
+    print("=" * 30)
+    print(f"Started experiment: {EXPERIMENT_NAME}")
+
+    print(f"Starting training for {MODEL_NAME}...")
+    trainer.fit(model, datamodule_default_imagenet10k)
+    print(
+        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_filename)}"
+    )
+
+    print(f"Finished experiment: {EXPERIMENT_NAME}")
+    print("=" * 30)
+
+    # load best model weights
+    best_model = (model.__class__).load_from_checkpoint(
+        checkpoint_callback.best_model_path
+    )
+    # save model as torch object
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
 
 def main():
     # pass
     # experiment1()
-    experiment2()
+    experiment3()
 
 
 if __name__ == "__main__":
