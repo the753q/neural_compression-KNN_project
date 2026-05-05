@@ -62,10 +62,30 @@ def experiment2():
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 
+def experiment3():
+    """
+    Train Balle 2017 model on ImageNet.
+    """
+    EXPERIMENT_NAME = "balle_imagenet10k"
+    MODEL_NAME = "Balle2017"
+    EPOCHS = 15
+    LEARNING_RATE = 1e-4
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
+
 def main():
     # pass
     # experiment1()
-    experiment2()
+    # experiment2()
+    experiment3()
 
 
 if __name__ == "__main__":

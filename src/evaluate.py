@@ -6,6 +6,7 @@ import torchvision.transforms.functional as TF
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
 import matplotlib
+
 matplotlib.use("Agg")
 
 from data import DF2KDataModule, ClassImagesDataModule
@@ -24,7 +25,9 @@ class ImageComparisonMetrics:
 
     def reset(self):
         self.psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-        self.ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
+        self.ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(
+            self.device
+        )
         self.total_mse = 0.0
         self.num_batches = 0
         self.finilized = False
@@ -38,7 +41,7 @@ class ImageComparisonMetrics:
             reconstruction = reconstruction.unsqueeze(0)
         if original.dim() == 3:
             original = original.unsqueeze(0)
-            
+
         self.total_mse += F.mse_loss(reconstruction, original).item()
         self.psnr_metric.update(reconstruction, original)
         self.ssim_metric.update(reconstruction, original)
@@ -49,8 +52,12 @@ class ImageComparisonMetrics:
         psnr_val = self.psnr_metric.compute()
         ssim_val = self.ssim_metric.compute()
 
-        self.avg_psnr = psnr_val.item() if torch.is_tensor(psnr_val) else float(psnr_val)
-        self.avg_ssim = ssim_val.item() if torch.is_tensor(ssim_val) else float(ssim_val)
+        self.avg_psnr = (
+            psnr_val.item() if torch.is_tensor(psnr_val) else float(psnr_val)
+        )
+        self.avg_ssim = (
+            ssim_val.item() if torch.is_tensor(ssim_val) else float(ssim_val)
+        )
         self.finilized = True
 
     def print_summary(self):
@@ -65,11 +72,12 @@ class ImageComparisonMetrics:
         print(f"SSIM: {self.avg_ssim:.4f}")
         print("=" * 30 + "\n")
 
+
 def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     print(f"\n--- Running evaluation for {evaluation_name} ---")
     datamodule.setup()
     val_loader = datamodule.val_dataloader()
-    
+
     device = next(model.parameters()).device
     model.eval()
 
@@ -83,16 +91,16 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         for i, batch in enumerate(val_loader):
             if i >= n_images:
                 break
-            
+
             # Assuming batch size 1 for full images, or first image of batch
-            original_tensor = batch[0] # (C, H, W)
-            
+            original_tensor = batch[0]  # (C, H, W)
+
             # 1. Model prediction
             result = model.evaluate_image(original_tensor)
             recon_ours = result["reconstruction"]
             recon_cae = result.get("cae_reconstruction", None)
             payload = result["compressed_payload"]
-            
+
             # 2. JPEG baseline
             # Convert tensor to PIL for JPEG utility
             img_pil = TF.to_pil_image(original_tensor.cpu())
@@ -106,16 +114,20 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
             metrics_jpeg.update(recon_jpeg, original_tensor)
 
             # 4. Calculate BPP and stats for this image
-            bpp = (len(payload) * 8.0) / (original_tensor.shape[1] * original_tensor.shape[2])
-            
+            bpp = (len(payload) * 8.0) / (
+                original_tensor.shape[1] * original_tensor.shape[2]
+            )
+
             if i < n_save:
-                print(f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp")
+                print(
+                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp"
+                )
                 save_path = f"{OUTPUT_DIR}/{evaluation_name}_{i}_comparison.png"
                 # Create a comparison strip: Original | CAE | Ours
                 to_stack = [original_tensor.cpu(), recon_ours.cpu()]
                 if recon_cae is not None:
                     to_stack.insert(1, recon_cae.cpu())
-                
+
                 comparison = torch.cat(to_stack, dim=2)
                 save_image(comparison, save_path)
 
@@ -125,27 +137,20 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     metrics_ours.print_summary()
     metrics_jpeg.print_summary()
 
+
 def main():
-    # Configuration
     # We use batch_size=1 and no crop for high-level evaluation on full images
     datamodule_full = ClassImagesDataModule(
         data_dir="datasets/imagenet_10K/imagenet_subtrain",
         batch_size=1,
         random_crop=False,
-        ycbcr=False, # Standardized to RGB for eval loader
+        ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    # Load models
-    try:
-        # Example: loading DCAL_2018
-        model = torch.load("checkpoints/manual/DCAL_2018_best_50epoch.pt", weights_only=False)
-        run_evaluation(model, datamodule_full, "DCAL_2018_eval")
-        
-        # Example: loading BasicAE
-        # model_basic = torch.load("checkpoints/manual/basic_best.pt", weights_only=False)
-        # run_evaluation(model_basic, datamodule_full, "basic_eval")
-    except Exception as e:
-        print(f"Error loading or running model: {e}")
+    model_name = "Balle2017_best.pt"
+    model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
+    run_evaluation(model, datamodule_full, f"{model_name}_eval")
+
 
 if __name__ == "__main__":
     main()
