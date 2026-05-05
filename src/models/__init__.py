@@ -1,13 +1,10 @@
-from .basic_ae import BasicAE, train_model as train_basic
 from .DCAL_2018 import DCAL_2018, train_model as train_dcal
 
 MODEL_REGISTRY = {
-    "basic": BasicAE,
     "DCAL_2018": DCAL_2018,
 }
 
 TRAIN_REGISTRY = {
-    "basic": train_basic,
     "DCAL_2018": train_dcal,
 }
 
