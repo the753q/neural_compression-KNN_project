@@ -81,11 +81,27 @@ def experiment3():
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 
+def experiment4():
+    """
+    Train CustomCompressor model on ImageNet.
+    """
+    EXPERIMENT_NAME = "custom_imagenet10k"
+    MODEL_NAME = "CustomCompressor"
+    EPOCHS = 15
+    LEARNING_RATE = 1e-4
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
+
 def main():
-    # pass
-    # experiment1()
-    # experiment2()
-    experiment3()
+    experiment4()
 
 
 if __name__ == "__main__":
