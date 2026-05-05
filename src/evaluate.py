@@ -19,8 +19,10 @@ OUTPUT_DIR = "outputs"
 
 
 class ImageComparisonMetrics:
-    def __init__(self, name_1, name_2):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, name_1, name_2, device=None):
+        self.device = device or torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
         self.name_1 = name_1
         self.name_2 = name_2
         self.reset()
@@ -83,9 +85,9 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     device = next(model.parameters()).device
     model.eval()
 
-    metrics_ours = ImageComparisonMetrics("original", "ours")
-    metrics_cae = ImageComparisonMetrics("original", "cae_only")
-    metrics_jpeg = ImageComparisonMetrics("original", "jpeg")
+    metrics_ours = ImageComparisonMetrics("original", "ours", device=device)
+    metrics_cae = ImageComparisonMetrics("original", "cae_only", device=device)
+    metrics_jpeg = ImageComparisonMetrics("original", "jpeg", device=device)
 
     # Create timestamped output directory
     now = datetime.datetime.now().strftime("%m_%d_%H_%M")
@@ -104,7 +106,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                     break
 
                 # Assuming batch size 1 for full images, or first image of batch
-                original_tensor = batch[0]  # (C, H, W)
+                original_tensor = batch[0].to(device)  # (C, H, W)
 
                 # 1. Model prediction
                 result = model.evaluate_image(original_tensor)
