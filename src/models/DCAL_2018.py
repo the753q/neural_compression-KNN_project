@@ -3,13 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger
-import os
 import constriction
 import numpy as np
 import dahuffman
 from utils import ImagePatcher, rgb_to_ycbcr, ycbcr_to_rgb
+from training_utils import universal_train_model
 
 
 class DownBranch(nn.Module):
@@ -23,7 +21,7 @@ class DownBranch(nn.Module):
                 nn.Conv2d(in_c, out_c1, kernel_size=3, stride=1, padding=1),
                 nn.PReLU(out_c1),
                 nn.Conv2d(out_c1, out_c2, kernel_size=3, stride=2, padding=1),
-                nn.PReLU(out_c2)
+                nn.PReLU(out_c2),
             )
 
         self.net = nn.Sequential(
@@ -34,6 +32,7 @@ class DownBranch(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
 
 class UpBranch(nn.Module):
     def __init__(self, in_channels):
@@ -46,7 +45,7 @@ class UpBranch(nn.Module):
                 nn.Conv2d(in_c, out_c1, kernel_size=3, stride=1, padding=1),
                 nn.PReLU(out_c1),
                 nn.ConvTranspose2d(out_c1, out_c2, kernel_size=4, stride=2, padding=1),
-                nn.PReLU(out_c2)
+                nn.PReLU(out_c2),
             )
 
         self.net = nn.Sequential(
@@ -57,6 +56,7 @@ class UpBranch(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -74,6 +74,7 @@ class Encoder(nn.Module):
 
         return out1, out2, out3
 
+
 class Decoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -83,8 +84,7 @@ class Decoder(nn.Module):
         self.row3 = UpBranch(32)
 
         self.final_merge = nn.Sequential(
-            nn.Conv2d(96, 3, kernel_size=3, padding=1),
-            nn.Sigmoid()
+            nn.Conv2d(96, 3, kernel_size=3, padding=1), nn.Sigmoid()
         )
 
     def forward(self, x_y, x_cb, x_cr):
@@ -95,6 +95,7 @@ class Decoder(nn.Module):
         x_concat = torch.cat([out1, out2, out3], dim=1)
         return self.final_merge(x_concat)
 
+
 class DCAL_2018(pl.LightningModule):
     def __init__(self, learning_rate=1e-3):
         super().__init__()
@@ -102,54 +103,70 @@ class DCAL_2018(pl.LightningModule):
         self.name = "DCAL_2018"
         self.encoder = Encoder()
         self.decoder = Decoder()
-        self.quantization_bits = 8 # lower -> more compression
+        self.quantization_bits = 8  # lower -> more compression
         self.rate_coeffitient = 1.0  # higher -> more compression
         assert self.rate_coeffitient >= 0.0
 
     def entropy_coder(self, x):
         symbols = x.cpu().numpy().astype(np.int32).flatten()
         # tile to match batch dimension in symbols
-        means = np.tile(self.z_means.cpu().numpy().flatten(), x.shape[0]).astype(np.float64)
-        stds = np.tile((self.z_stds + 1e-8).cpu().numpy().flatten(), x.shape[0]).astype(np.float64)
+        means = np.tile(self.z_means.cpu().numpy().flatten(), x.shape[0]).astype(
+            np.float64
+        )
+        stds = np.tile((self.z_stds + 1e-8).cpu().numpy().flatten(), x.shape[0]).astype(
+            np.float64
+        )
 
         B = self.quantization_bits
-        model_family = constriction.stream.model.QuantizedGaussian(-2**(B-1), 2**(B-1)-1)
+        model_family = constriction.stream.model.QuantizedGaussian(
+            -(2 ** (B - 1)), 2 ** (B - 1) - 1
+        )
         coder = constriction.stream.stack.AnsCoder()
         coder.encode_reverse(symbols, model_family, means, stds)
-        compressed =  coder.get_compressed()
+        compressed = coder.get_compressed()
 
         return compressed
 
     def entropy_decoder(self, x, original_shape):
         # tile to match batch size
         batch_size = original_shape[0]
-        means = np.tile(self.z_means.cpu().numpy().flatten(), batch_size).astype(np.float64)
-        stds = np.tile((self.z_stds + 1e-8).cpu().numpy().flatten(), batch_size).astype(np.float64)
+        means = np.tile(self.z_means.cpu().numpy().flatten(), batch_size).astype(
+            np.float64
+        )
+        stds = np.tile((self.z_stds + 1e-8).cpu().numpy().flatten(), batch_size).astype(
+            np.float64
+        )
 
         B = self.quantization_bits
-        model_family = constriction.stream.model.QuantizedGaussian(-2**(B-1), 2**(B-1)-1)
+        model_family = constriction.stream.model.QuantizedGaussian(
+            -(2 ** (B - 1)), 2 ** (B - 1) - 1
+        )
         decoder = constriction.stream.stack.AnsCoder(x)
         symbols = decoder.decode(model_family, means, stds)
-        return torch.tensor(symbols, dtype=torch.int32).reshape(original_shape).to(next(self.parameters()).device)
+        return (
+            torch.tensor(symbols, dtype=torch.int32)
+            .reshape(original_shape)
+            .to(next(self.parameters()).device)
+        )
 
     def pca_rotation(self, y):
         B, N6, H, W = y.shape
         m = H * W
-        
+
         # reshape to (B, N6, m) — each spatial location is one sample
         y_flat = y.view(B, N6, m)
-        
+
         # covariance matrix (B, N6, N6)
         cov = (y_flat @ y_flat.transpose(1, 2)) / m
-        
+
         # eigenvectors — eigenvalues sorted ascending, so flip
         eigenvalues, U = torch.linalg.eigh(cov)
         U = U.flip(-1)  # (B, N6, N6), columns sorted descending by eigenvalue
-        
+
         # rotate
         y_rot = U.transpose(1, 2) @ y_flat  # (B, N6, m)
         y_rot = y_rot.view(B, N6, H, W)
-        
+
         return y_rot, U
 
     def pca_inverse(self, y_rot, U):
@@ -160,12 +177,16 @@ class DCAL_2018(pl.LightningModule):
 
     def quantizer(self, x):
         B = self.quantization_bits
-        x_quantized = torch.round(2**(B-1) * x).clamp(-2**(B-1), 2**(B-1)-1).to(torch.int32)
+        x_quantized = (
+            torch.round(2 ** (B - 1) * x)
+            .clamp(-(2 ** (B - 1)), 2 ** (B - 1) - 1)
+            .to(torch.int32)
+        )
         return x_quantized
 
     def dequantizer(self, x):
         B = self.quantization_bits
-        x_reconstructed = (x / 2**(B-1))
+        x_reconstructed = x / 2 ** (B - 1)
         return x_reconstructed
 
     def training_step(self, batch, batch_idx):
@@ -174,16 +195,16 @@ class DCAL_2018(pl.LightningModule):
 
         # add uniform noise to simulate quantization
         z = torch.cat([z_y, z_cb, z_cr], dim=1)
-        noise = torch.zeros_like(z).uniform_(-(1.0/1024.0), 1.0/1024.0)
-        z_y, z_cb, z_cr = torch.split(z+noise, 32, dim=1)
+        noise = torch.zeros_like(z).uniform_(-(1.0 / 1024.0), 1.0 / 1024.0)
+        z_y, z_cb, z_cr = torch.split(z + noise, 32, dim=1)
 
         x_hat = self.decoder(z_y, z_cb, z_cr)
 
-        loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
+        loss = F.mse_loss(x_hat, x) + self.rate_coeffitient * torch.mean(z**2)
 
         self.log("train_loss", loss, prog_bar=True)
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
         x = batch
         z_y, z_cb, z_cr = self.encoder(x)
@@ -191,7 +212,7 @@ class DCAL_2018(pl.LightningModule):
 
         x_hat = self.decoder(z_y, z_cb, z_cr)
 
-        loss = F.mse_loss(x_hat, x) + self.rate_coeffitient*torch.mean(z ** 2)
+        loss = F.mse_loss(x_hat, x) + self.rate_coeffitient * torch.mean(z**2)
 
         self.log("val_loss", loss, prog_bar=True)
 
@@ -199,7 +220,7 @@ class DCAL_2018(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
     def forward(self, x):
-        x_hat, _= self.forward_get_latent(x)
+        x_hat, _ = self.forward_get_latent(x)
         return x_hat
 
     def forward_just_cae(self, x):
@@ -233,8 +254,12 @@ class DCAL_2018(pl.LightningModule):
         U_quant_join = torch.cat([U_quant_Y, U_quant_Cb, U_quant_Cr], dim=1)
         z_quant_join = torch.cat([z_quant_Y, z_quant_Cb, z_quant_Cr], dim=1)
 
-        payload = np.concatenate([z_quant_join.cpu().numpy().astype(np.int32).flatten(),
-                                  U_quant_join.cpu().numpy().astype(np.int32).flatten()])
+        payload = np.concatenate(
+            [
+                z_quant_join.cpu().numpy().astype(np.int32).flatten(),
+                U_quant_join.cpu().numpy().astype(np.int32).flatten(),
+            ]
+        )
 
         USE_FANCY_COMPRESSION = False
         if USE_FANCY_COMPRESSION:
@@ -248,7 +273,6 @@ class DCAL_2018(pl.LightningModule):
             codec = dahuffman.HuffmanCodec.from_data(payload)
             compressed_payload = codec.encode(payload)
             # z_decompressed = torch.tensor(codec.decode(z_compressed), dtype=torch.int32).reshape(z_quant_join.shape).to(next(self.parameters()).device)
-
 
         # De-quantization
         U_rec_Y = self.dequantizer(U_quant_Y)
@@ -275,28 +299,28 @@ class DCAL_2018(pl.LightningModule):
         """
         device = next(self.parameters()).device
         x = x.to(device)
-        
+
         # Convert to YCbCr for processing if input is RGB
         # We assume 3 channels means RGB unless specified otherwise
         x_ycbcr = rgb_to_ycbcr(x)
-        
+
         # We use patches of 128x128 for evaluation to match training/memory constraints
         patcher = ImagePatcher(patch_size=128)
         patches, positions, original_size = patcher.create_patches(x_ycbcr)
-        
+
         reconstructions = []
         reconstructions_cae = []
         total_compressed_data = b""
-        
+
         for i in range(patches.shape[0]):
-            patch = patches[i:i+1] # (1, C, P, P)
+            patch = patches[i : i + 1]  # (1, C, P, P)
             with torch.no_grad():
                 recon, compressed = self.forward_get_latent(patch)
                 recon_cae = self.forward_just_cae(patch)
-                
+
             reconstructions.append(recon.squeeze(0))
             reconstructions_cae.append(recon_cae.squeeze(0))
-            
+
             # If compressed is a list/numpy, convert to bytes for consistent size calculation
             if isinstance(compressed, np.ndarray):
                 total_compressed_data += compressed.tobytes()
@@ -306,57 +330,30 @@ class DCAL_2018(pl.LightningModule):
                 total_compressed_data += compressed
 
         # Combine patches back into full image
-        full_reconstruction_ycbcr = patcher.combine_patches(original_size, positions, torch.stack(reconstructions))
-        full_reconstruction_cae_ycbcr = patcher.combine_patches(original_size, positions, torch.stack(reconstructions_cae))
-        
+        full_reconstruction_ycbcr = patcher.combine_patches(
+            original_size, positions, torch.stack(reconstructions)
+        )
+        full_reconstruction_cae_ycbcr = patcher.combine_patches(
+            original_size, positions, torch.stack(reconstructions_cae)
+        )
+
         # Convert back to RGB for the final output
         full_reconstruction = ycbcr_to_rgb(full_reconstruction_ycbcr)
         full_reconstruction_cae = ycbcr_to_rgb(full_reconstruction_cae_ycbcr)
-        
+
         return {
             "reconstruction": full_reconstruction,
             "cae_reconstruction": full_reconstruction_cae,
-            "compressed_payload": total_compressed_data
+            "compressed_payload": total_compressed_data,
         }
 
 
-def train_model(datamodule, experiment_name, epochs, learning_rate):
-    model = DCAL_2018(learning_rate=learning_rate)
-
-    checkpoint_filename = f"{experiment_name}-{model.name}-best"
-
-    checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints/",
-        filename=checkpoint_filename,
-        save_top_k=1,
-        monitor="val_loss",
-        mode="min",
+def train_model(datamodule, experiment_name, epochs, learning_rate, target_flops=None):
+    return universal_train_model(
+        DCAL_2018,
+        datamodule,
+        experiment_name,
+        epochs,
+        learning_rate,
+        target_flops=target_flops,
     )
-
-    csv_logger = CSVLogger("logs/", name=experiment_name)
-
-    trainer = pl.Trainer(
-        max_epochs=epochs,
-        accelerator="auto",
-        precision="bf16-mixed",
-        callbacks=[checkpoint_callback],
-        logger=csv_logger,
-    )
-
-    print("=" * 30)
-    print(f"Started experiment: {experiment_name}")
-
-    print(f"Starting training for {model.name}...")
-    trainer.fit(model, datamodule)
-
-    # load best model weights
-    best_model = DCAL_2018.load_from_checkpoint(checkpoint_callback.best_model_path)
-
-    print(
-        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_callback.best_model_path)}"
-    )
-
-    print(f"Finished experiment: {experiment_name}")
-    print("=" * 30)
-
-    return best_model

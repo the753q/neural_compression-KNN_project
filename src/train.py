@@ -100,8 +100,33 @@ def experiment4():
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 
+def experiment5():
+    """
+    Train CustomCompressor model with a fixed computational budget (FLOPs).
+    """
+    EXPERIMENT_NAME = "dcal2018"
+    MODEL_NAME = "DCAL_2018"
+    EPOCHS = 100  # Will be overridden by flops limit
+    LEARNING_RATE = 1e-4
+    TARGET_FLOPS = 3e15
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+        target_flops=TARGET_FLOPS,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_flops_best.pt")
+
+
 def main():
-    experiment4()
+    # experiment4()
+    experiment5()
 
 
 if __name__ == "__main__":
