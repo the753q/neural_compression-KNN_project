@@ -161,13 +161,13 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 def main():
     # We use batch_size=1 and no crop for high-level evaluation on full images
     datamodule_full = ClassImagesDataModule(
-        data_dir="datasets/imagenet_10K/imagenet_subtrain",
+        data_dir="datasets/DF2K/test",
         batch_size=1,
         random_crop=False,
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "Balle2017_best.pt"
+    model_name = "DCAL_2018_best.pt"
     model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
     run_evaluation(model, datamodule_full, f"{model_name}_eval")
 

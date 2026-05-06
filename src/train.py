@@ -18,7 +18,7 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
 datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
-    batch_size=8,
+    batch_size=16,
     ycbcr=True,
     random_crop=True,
 )
@@ -100,8 +100,29 @@ def experiment4():
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
 
+
+def experiment5():
+    """
+    Train a basic DCAL 2018 on DF2K..
+    """
+    EXPERIMENT_NAME = "dcal_df2k"
+    MODEL_NAME = "DCAL_2018"
+    EPOCHS = 100
+    LEARNING_RATE = 1e-4
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_df2k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
+
+
 def main():
-    experiment4()
+    experiment5()
 
 
 if __name__ == "__main__":

@@ -59,5 +59,5 @@ def get_df2k():
 shutil.rmtree(DATASETS_DIR, ignore_errors=True)
 os.makedirs(DATASETS_DIR, exist_ok=True)
 
-get_dataset(kaggle_path="priyerana/imagenet-10k", name="imagenet_10K")
+#get_dataset(kaggle_path="priyerana/imagenet-10k", name="imagenet_10K")
 get_df2k()
