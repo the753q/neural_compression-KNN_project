@@ -2,7 +2,10 @@
 .idea/
 *lightning_logs/
 checkpoints/
-outputs/
+# outputs/
+*.png
+*.jpg
+*.jpeg
 logs/
 
 # Byte-compiled / optimized / DLL files

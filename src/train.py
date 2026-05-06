@@ -104,8 +104,8 @@ def experiment5():
     """
     Train CustomCompressor model with a fixed computational budget (FLOPs).
     """
-    EXPERIMENT_NAME = "dcal2018"
-    MODEL_NAME = "DCAL_2018"
+    EXPERIMENT_NAME = "DCAL_Native"
+    MODEL_NAME = "DCAL_Native"
     EPOCHS = 100  # Will be overridden by flops limit
     LEARNING_RATE = 1e-4
     TARGET_FLOPS = 3e15

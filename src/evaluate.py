@@ -167,7 +167,7 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "Balle2017_best.pt"
+    model_name = "DCAL_Native_flops_best.pt"
     model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
     run_evaluation(model, datamodule_full, f"{model_name}_eval")
 
