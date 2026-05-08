@@ -1,4 +1,4 @@
-# Deep Convolutional AutoEncoder-based Lossy Image Compression 2018
+# Deep Convolutional AutoEncoder-based Lossy Image Compression - Native Inference
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +6,7 @@ import lightning.pytorch as pl
 import constriction
 import numpy as np
 import dahuffman
-from utils import ImagePatcher, rgb_to_ycbcr, ycbcr_to_rgb
+from utils import rgb_to_ycbcr, ycbcr_to_rgb
 from training_utils import universal_train_model
 
 
@@ -96,11 +96,11 @@ class Decoder(nn.Module):
         return self.final_merge(x_concat)
 
 
-class DCAL_2018(pl.LightningModule):
+class DCAL_Native(pl.LightningModule):
     def __init__(self, learning_rate=1e-3):
         super().__init__()
         self.save_hyperparameters()
-        self.name = "DCAL_2018"
+        self.name = "DCAL_Native"
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.quantization_bits = 8  # lower -> more compression
@@ -264,15 +264,10 @@ class DCAL_2018(pl.LightningModule):
         USE_FANCY_COMPRESSION = False
         if USE_FANCY_COMPRESSION:
             z_compressed = self.entropy_coder(z_quant_join)
-            # original_shape = z_quant_join.shape
-            # z_decompressed = self.entropy_decoder(z_compressed, original_shape)
-            #
             compressed_payload = z_compressed.tobytes()
-            #
         else:
             codec = dahuffman.HuffmanCodec.from_data(payload)
             compressed_payload = codec.encode(payload)
-            # z_decompressed = torch.tensor(codec.decode(z_compressed), dtype=torch.int32).reshape(z_quant_join.shape).to(next(self.parameters()).device)
 
         # De-quantization
         U_rec_Y = self.dequantizer(U_quant_Y)
@@ -293,64 +288,58 @@ class DCAL_2018(pl.LightningModule):
 
     def evaluate_image(self, x):
         """
-        Standardized evaluation method.
+        Native evaluation method supporting arbitrary image sizes.
         x: (C, H, W) tensor (RGB)
         Returns: dict with reconstructions and compressed data.
         """
         device = next(self.parameters()).device
         x = x.to(device)
 
-        # Convert to YCbCr for processing if input is RGB
-        # We assume 3 channels means RGB unless specified otherwise
+        # Convert to YCbCr for processing
         x_ycbcr = rgb_to_ycbcr(x)
-
-        # We use patches of 128x128 for evaluation to match training/memory constraints
-        patcher = ImagePatcher(patch_size=128)
-        patches, positions, original_size = patcher.create_patches(x_ycbcr)
-
-        reconstructions = []
-        reconstructions_cae = []
-        total_compressed_data = b""
-
-        for i in range(patches.shape[0]):
-            patch = patches[i : i + 1]  # (1, C, P, P)
-            with torch.no_grad():
-                recon, compressed = self.forward_get_latent(patch)
-                recon_cae = self.forward_just_cae(patch)
-
-            reconstructions.append(recon.squeeze(0))
-            reconstructions_cae.append(recon_cae.squeeze(0))
-
-            # If compressed is a list/numpy, convert to bytes for consistent size calculation
-            if isinstance(compressed, np.ndarray):
-                total_compressed_data += compressed.tobytes()
-            elif isinstance(compressed, list):
-                total_compressed_data += bytes(compressed)
-            else:
-                total_compressed_data += compressed
-
-        # Combine patches back into full image
-        full_reconstruction_ycbcr = patcher.combine_patches(
-            original_size, positions, torch.stack(reconstructions)
-        )
-        full_reconstruction_cae_ycbcr = patcher.combine_patches(
-            original_size, positions, torch.stack(reconstructions_cae)
-        )
-
-        # Convert back to RGB for the final output
-        full_reconstruction = ycbcr_to_rgb(full_reconstruction_ycbcr)
-        full_reconstruction_cae = ycbcr_to_rgb(full_reconstruction_cae_ycbcr)
+        
+        # Get original dimensions
+        c, h, w = x_ycbcr.shape
+        
+        # Calculate padding to make dimensions multiples of 8 (due to 3 downsampling stages)
+        pad_h = (8 - (h % 8)) % 8
+        pad_w = (8 - (w % 8)) % 8
+        
+        # Apply reflection padding (right and bottom)
+        # F.pad expects (left, right, top, bottom) for 4D input
+        x_padded = F.pad(x_ycbcr.unsqueeze(0), (0, pad_w, 0, pad_h), mode='reflect')
+        
+        with torch.no_grad():
+            # Process entire image natively
+            recon_padded, compressed = self.forward_get_latent(x_padded)
+            recon_cae_padded = self.forward_just_cae(x_padded)
+            
+        # Crop back to original size and remove batch dimension
+        recon = recon_padded[:, :, :h, :w].squeeze(0)
+        recon_cae = recon_cae_padded[:, :, :h, :w].squeeze(0)
+        
+        # Convert back to RGB for final output
+        full_reconstruction = ycbcr_to_rgb(recon)
+        full_reconstruction_cae = ycbcr_to_rgb(recon_cae)
+        
+        # Ensure compressed payload is in bytes for consistent size calculation
+        if isinstance(compressed, np.ndarray):
+            compressed_payload = compressed.tobytes()
+        elif isinstance(compressed, list):
+            compressed_payload = bytes(compressed)
+        else:
+            compressed_payload = compressed
 
         return {
             "reconstruction": full_reconstruction,
             "cae_reconstruction": full_reconstruction_cae,
-            "compressed_payload": total_compressed_data,
+            "compressed_payload": compressed_payload,
         }
 
 
 def train_model(datamodule, experiment_name, epochs, learning_rate, target_flops=None):
     return universal_train_model(
-        DCAL_2018,
+        DCAL_Native,
         datamodule,
         experiment_name,
         epochs,

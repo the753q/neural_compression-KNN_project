@@ -4,12 +4,12 @@ from PIL import Image, ImageOps
 import torchvision.transforms.functional as TF
 import kornia
 
-def get_jpeg_image(img):
+def get_jpeg_image(img, quality=95):
     """
     Returns a JPEG-compressed version of a PIL Image and its size in bytes.
     """
     buf_jpeg = io.BytesIO()
-    img.save(buf_jpeg, format="JPEG", quality=95)
+    img.save(buf_jpeg, format="JPEG", quality=quality)
     jpeg_size = buf_jpeg.tell()
     buf_jpeg.seek(0)
     jpeg_img = Image.open(buf_jpeg)
