@@ -16,12 +16,14 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
 )
 
 datamodule_df2k = DF2KDataModule(
-    train_dir="datasets/DF2K_jpeg/train",
-    test_dir="datasets/DF2K_jpeg/test",
+    train_dir="datasets/DF2K/train",
+    test_dir="datasets/DF2K/test",
     batch_size=16,
     ycbcr=False,
     random_crop=True,
     patch_size=256,
+    val_patch_size=640,
+    val_batch_size=5
 )
 
 

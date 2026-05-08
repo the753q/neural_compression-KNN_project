@@ -31,24 +31,33 @@ class DatasetFolder(Dataset):
         return image
 
 class DataModuleBase(pl.LightningDataModule):
-    def __init__(self, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size=256):
+    def __init__(self, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size=256, val_patch_size=256, val_batch_size=64):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.random_crop = random_crop
         self.ycbcr = ycbcr
         self.patch_size = patch_size
+        self.val_patch_size = val_patch_size
+        self.val_batch_size = val_batch_size
 
         assert not ((not random_crop) and (batch_size > 1)), "Can't combine images of various sizes in one batch."
 
         t = []
+        val_t = []
         if random_crop:
             t.append(transforms.RandomCrop((self.patch_size, self.patch_size)))
+            if val_patch_size:
+                val_t.append(transforms.CenterCrop((self.val_patch_size, self.val_patch_size)))
         if ycbcr:
             t.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
+            val_t.append(transforms.Lambda(lambda x: x.convert('YCbCr')))
+
         t.append(transforms.ToTensor())
+        val_t.append(transforms.ToTensor())
 
         self.transform = transforms.Compose(t)
+        self.val_transform = transforms.Compose(val_t)
         
         self.collate_fn=lambda batch: torch.stack([img for img, _ in batch])
 
@@ -62,7 +71,7 @@ class DataModuleBase(pl.LightningDataModule):
 
     def val_dataloader(self):
         assert hasattr(self, 'val_ds')
-        return DataLoader(self.val_ds, batch_size=self.batch_size, shuffle=False,
+        return DataLoader(self.val_ds, batch_size=self.val_batch_size, shuffle=False,
                           num_workers=self.num_workers, pin_memory=True, collate_fn=self.collate_fn)
 
     def test_dataloader(self):
@@ -91,20 +100,35 @@ class ClassImagesDataModule(DataModuleBase):
         )
     
 class DF2KDataModule(DataModuleBase):
-    def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size = 256):
+    def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4,
+                  patch_size = 256, val_patch_size = 512, val_batch_size = 16):
         super().__init__(random_crop = random_crop, ycbcr=ycbcr,
-                batch_size=batch_size, num_workers=num_workers, patch_size=patch_size)
+                batch_size=batch_size, num_workers=num_workers,
+                  patch_size=patch_size, val_patch_size=val_patch_size, val_batch_size=val_batch_size)
         
         self.train_dir = train_dir
         self.test_dir = test_dir
 
     def setup(self, stage=None):
         train_dataset = ImageFolder(self.train_dir, transform=self.transform)
-        test_dataset   = ImageFolder(self.test_dir,   transform=self.transform)
+        val_dataset = ImageFolder(self.train_dir, transform=self.val_transform)
+        # TODO could also make test dataset transform similar to val
+        test_dataset   = ImageFolder(self.test_dir, transform=self.transform)
 
         self.test_ds = test_dataset
-        
-        self.train_ds, self.val_ds = random_split(
-            train_dataset, [0.9, 0.1],
-            generator=torch.Generator().manual_seed(42)
-        )
+
+        indices = list(range(len(train_dataset)))
+        split = int(0.9 * len(indices))
+        rng = torch.Generator().manual_seed(42)
+        perm = torch.randperm(len(indices), generator=rng).tolist()
+
+        train_indices = perm[:split]
+        val_indices = perm[split:]
+
+        self.train_ds = Subset(train_dataset, train_indices)
+        self.val_ds = Subset(val_dataset, val_indices)
+
+        # self.train_ds, self.val_ds = random_split(
+        #     train_dataset, [0.9, 0.1],
+        #     generator=torch.Generator().manual_seed(42)
+        # )

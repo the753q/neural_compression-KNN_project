@@ -23,7 +23,7 @@ def get_dataset(kaggle_path, name):
     shutil.copytree(path, f"{DATASETS_DIR}/{name}", dirs_exist_ok=True)
     print(f"Copied dataset {name} to: {DATASETS_DIR}/{name}")
 
-def get_df2k():
+def get_df2k(convert_to_jpeg = False):
     print(f"Downloading dataset div2k")
     div2k_path = kagglehub.dataset_download("soumikrakshit/div2k-high-resolution-images")
     print(f"Downloading dataset flickr2k")
@@ -41,10 +41,19 @@ def get_df2k():
         os.path.join(flickr2k_path, "Flickr2K/*.png"),
     ]
 
+    print(f"Convert to jpeg: {convert_to_jpeg}")
+
     # copy files into train
     print("Combining files: ")
-    for pattern in sources:
-         subprocess.run(f"cp {pattern} {DF2K_TRAIN_DIR}/", shell=True)
+    if convert_to_jpeg:
+        for pattern in sources:
+            for src_file in glob(pattern):
+                dst_file = os.path.join(DF2K_TRAIN_DIR, Path(src_file).stem + ".jpg")
+                Image.open(src_file).convert("RGB").save(dst_file, "JPEG", quality=95)
+    else:
+        for pattern in sources:
+            subprocess.run(f"cp {pattern} {DF2K_TRAIN_DIR}/", shell=True)
+
 
     # separate test files
     all_files = os.listdir(DF2K_TRAIN_DIR)
@@ -57,42 +66,9 @@ def get_df2k():
 
     print(f"Train: {len(os.listdir(DF2K_TRAIN_DIR))} | Test: {len(os.listdir(DF2K_TEST_DIR))}")
 
-def convert_dir_to_jpeg(src_dir, dst_dir, quality=95):
-    src = Path(src_dir)
-    dst = Path(dst_dir)
-    
-    for src_file in src.rglob("*"):
-        dst_file = dst / src_file.relative_to(src)
-        
-        if src_file.is_dir():
-            dst_file.mkdir(parents=True, exist_ok=True)
-        else:
-            print(f"Saving: {dst_file}")
-            dst_file = dst_file.with_suffix(".jpg")
-            dst_file.parent.mkdir(parents=True, exist_ok=True)
-            Image.open(src_file).convert("RGB").save(dst_file, "JPEG", quality=quality)
-
-def convert_dir_to_webp(src_dir, dst_dir):
-    src = Path(src_dir)
-    dst = Path(dst_dir)
-    
-    for src_file in src.rglob("*"):
-        dst_file = dst / src_file.relative_to(src)
-        
-        if src_file.is_dir():
-            dst_file.mkdir(parents=True, exist_ok=True)
-        else:
-            print(f"Saving: {dst_file}")
-            dst_file = dst_file.with_suffix(".webp")
-            dst_file.parent.mkdir(parents=True, exist_ok=True)
-            Image.open(src_file).convert("RGB").save(dst_file, "WEBP", lossless=True)
-
 #remove old dataset dir, and create a new one
 shutil.rmtree(DATASETS_DIR, ignore_errors=True)
 os.makedirs(DATASETS_DIR, exist_ok=True)
 
 get_dataset(kaggle_path="priyerana/imagenet-10k", name="imagenet_10K")
-get_df2k()
-
-convert_dir_to_jpeg(f"{DATASETS_DIR}/DF2K", f"{DATASETS_DIR}/DF2K_jpeg")
-# convert_dir_to_webp(f"{DATASETS_DIR}/DF2K", f"{DATASETS_DIR}/DF2K_webp")
+get_df2k(convert_to_jpeg=True)
