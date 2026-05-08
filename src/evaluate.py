@@ -89,7 +89,10 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     metrics_cae = ImageComparisonMetrics("original", "cae_only", device=device)
     # JPEG qualities to evaluate
     jpeg_qualities = [1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
-    jpeg_metrics = {q: ImageComparisonMetrics(f"original", f"jpeg_q{q}", device=device) for q in jpeg_qualities}
+    jpeg_metrics = {
+        q: ImageComparisonMetrics(f"original", f"jpeg_q{q}", device=device)
+        for q in jpeg_qualities
+    }
     jpeg_bpps = {q: [] for q in jpeg_qualities}
     model_bpps = []
 
@@ -158,23 +161,26 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         # Final summaries to file
         if metrics_cae.num_batches > 0:
             metrics_cae.print_summary(file=f)
-        
+
         metrics_ours.print_summary(file=f)
-        
+
         # Calculate final averages
         metrics_ours.finilize()
         avg_bpp_ours = sum(model_bpps) / len(model_bpps)
-        
+
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
         print(f"model_psnr: {metrics_ours.avg_psnr:.4f}", file=f)
         print(f"model_ssim: {metrics_ours.avg_ssim:.4f}", file=f)
-        
+
         print("\n[JPEG_RD_CURVE]", file=f)
         for q in jpeg_qualities:
             jpeg_metrics[q].finilize()
             avg_bpp_q = sum(jpeg_bpps[q]) / len(jpeg_bpps[q])
-            print(f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ssim={jpeg_metrics[q].avg_ssim:.4f}", file=f)
+            print(
+                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ssim={jpeg_metrics[q].avg_ssim:.4f}",
+                file=f,
+            )
 
     print(f"Evaluation complete. Results saved to {experiment_dir}")
 
@@ -192,7 +198,7 @@ def main():
     for model_name in models:
         try:
             model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
-            run_evaluation(model, datamodule_full, f"{model_name}_eval", n_images=10) # reduced n_images for speed
+            run_evaluation(model, datamodule_full, f"{model_name}_eval", n_images=30)
         except Exception as e:
             print(f"Error evaluating {model_name}: {e}")
 
