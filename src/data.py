@@ -112,7 +112,6 @@ class DF2KDataModule(DataModuleBase):
     def setup(self, stage=None):
         train_dataset = ImageFolder(self.train_dir, transform=self.transform)
         val_dataset = ImageFolder(self.train_dir, transform=self.val_transform)
-        # TODO could also make test dataset transform similar to val
         test_dataset   = ImageFolder(self.test_dir, transform=self.transform)
 
         self.test_ds = test_dataset
@@ -127,8 +126,3 @@ class DF2KDataModule(DataModuleBase):
 
         self.train_ds = Subset(train_dataset, train_indices)
         self.val_ds = Subset(val_dataset, val_indices)
-
-        # self.train_ds, self.val_ds = random_split(
-        #     train_dataset, [0.9, 0.1],
-        #     generator=torch.Generator().manual_seed(42)
-        # )
