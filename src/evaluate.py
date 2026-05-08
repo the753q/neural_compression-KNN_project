@@ -171,10 +171,9 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "Hyperprior_best.pt"
+    model_name = "hyperprior_df2k_best.pt"
     model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
     run_evaluation(model, datamodule_full, f"{model_name}_eval")
-
 
 if __name__ == "__main__":
     main()

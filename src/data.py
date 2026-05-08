@@ -82,7 +82,8 @@ class DataModuleBase(pl.LightningDataModule):
 class ClassImagesDataModule(DataModuleBase):
     def __init__(self, data_dir, random_crop, ycbcr, batch_size=64, num_workers=4, patch_size = 256):
         super().__init__(random_crop = random_crop, ycbcr=ycbcr,
-                        batch_size=batch_size, num_workers=num_workers, patch_size=patch_size)
+                        batch_size=batch_size, num_workers=num_workers, patch_size=patch_size,
+                        val_batch_size=batch_size, val_patch_size=patch_size)
 
         self.data_dir = data_dir
 

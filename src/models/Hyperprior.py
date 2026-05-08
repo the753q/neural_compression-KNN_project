@@ -21,9 +21,6 @@ class AbsConv(nn.Sequential):
         return super().forward(x.abs())
 
 class Hyperprior(pl.LightningModule):
-    """
-
-    """
 
     def __init__(self, lambda_=0.01, learning_rate=1e-4):
         super().__init__()
@@ -31,8 +28,8 @@ class Hyperprior(pl.LightningModule):
         self.name = "Hyperprior"
         self.lambda_ = lambda_
 
-        N = 96
-        M = 144
+        N = 128
+        M = 192
 
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 

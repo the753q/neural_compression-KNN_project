@@ -18,7 +18,7 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
 datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
-    batch_size=16,
+    batch_size=8,
     ycbcr=False,
     random_crop=True,
     patch_size=256,
@@ -142,7 +142,7 @@ def main():
     general_experiment({
         "experiment_name": "hyperprior_df2k",
         "model_name": "Hyperprior",
-        "epochs": 4,
+        "epochs": 20,
         "lr": 1e-4,
         "data_module": datamodule_df2k
     })
