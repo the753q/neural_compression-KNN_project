@@ -17,7 +17,6 @@ dependencies = [
     "cuda-pathfinder==1.5.2",
     "cuda-toolkit==13.0.2",
     "dahuffman==0.4.2",
-    "dearpygui>=2.3.1",
     "filelock==3.25.2",
     "frozenlist==1.8.0",
     "fsspec==2026.3.0",

@@ -130,13 +130,10 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 bpp = (len(payload) * 8.0) / (
                     original_tensor.shape[1] * original_tensor.shape[2]
                 )
-                jpeg_bpp = (jpeg_size * 8.0) / (
-                    original_tensor.shape[1] * original_tensor.shape[2]
-                )
 
                 # Log per-image results to file
                 print(
-                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | ours: {bpp:.3f} bpp | jpeg: {jpeg_bpp:.3f} bpp",
+                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp",
                     file=f,
                 )
 
@@ -170,7 +167,7 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "DCAL_2018_flops_best.pt"
+    model_name = "DCAL_Native_flops_best.pt"
     model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
     run_evaluation(model, datamodule_full, f"{model_name}_eval")
 
