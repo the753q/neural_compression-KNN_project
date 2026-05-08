@@ -239,8 +239,8 @@ class Hyperprior(pl.LightningModule):
         return {"reconstruction": full_reconstruction, "compressed_payload": payload}
 
 
-def train_model(datamodule, experiment_name, epochs, learning_rate):
-    model = Hyperprior(learning_rate=learning_rate)
+def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_):
+    model = Hyperprior(learning_rate=learning_rate, lambda_=lambda_)
 
     checkpoint_filename = f"{experiment_name}-{model.name}-best"
 
