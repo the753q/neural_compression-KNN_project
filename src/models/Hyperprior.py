@@ -28,8 +28,8 @@ class Hyperprior(pl.LightningModule):
         self.name = "Hyperprior"
         self.lambda_ = lambda_
 
-        N = 128
-        M = 192
+        N = 64
+        M = 96
 
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 
