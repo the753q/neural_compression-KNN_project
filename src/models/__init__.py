@@ -1,17 +1,20 @@
 from .DCAL_2018 import DCAL_2018, train_model as train_dcal
 from .Balle2017 import Balle2017, train_model as train_balle
 from .CustomCompressor import CustomCompressor, train_model as train_custom
+from .Hyperprior import Hyperprior, train_model as train_hyperprior
 
 MODEL_REGISTRY = {
     "DCAL_2018": DCAL_2018,
     "Balle2017": Balle2017,
     "CustomCompressor": CustomCompressor,
+    "Hyperprior": Hyperprior
 }
 
 TRAIN_REGISTRY = {
     "DCAL_2018": train_dcal,
     "Balle2017": train_balle,
     "CustomCompressor": train_custom,
+    "Hyperprior": train_hyperprior
 }
 
 

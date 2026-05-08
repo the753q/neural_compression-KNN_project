@@ -16,11 +16,12 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
 )
 
 datamodule_df2k = DF2KDataModule(
-    train_dir="datasets/DF2K/train",
-    test_dir="datasets/DF2K/test",
+    train_dir="datasets/DF2K_jpeg/train",
+    test_dir="datasets/DF2K_jpeg/test",
     batch_size=16,
-    ycbcr=True,
+    ycbcr=False,
     random_crop=True,
+    patch_size=256,
 )
 
 
@@ -119,11 +120,30 @@ def experiment5():
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
+def general_experiment(data):
+    assert "experiment_name" in data
+    assert "model_name" in data
+    assert "epochs" in data
+    assert "lr" in data
+    assert "data_module" in data
 
+    train_fn = get_train_function(data["model_name"])
+    best_model = train_fn(
+        data["data_module"], data["experiment_name"], data["epochs"], data["lr"]
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{data["experiment_name"]}_best.pt")
 
 def main():
-    experiment5()
-
+    general_experiment({
+        "experiment_name": "hyperprior_df2k",
+        "model_name": "Hyperprior",
+        "epochs": 4,
+        "lr": 1e-4,
+        "data_module": datamodule_df2k
+    })
 
 if __name__ == "__main__":
     main()

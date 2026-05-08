@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torchvision import transforms
 import torchvision.transforms.functional as TF
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure, MultiScaleStructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
 import matplotlib
 
@@ -29,7 +29,7 @@ class ImageComparisonMetrics:
 
     def reset(self):
         self.psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-        self.ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(
+        self.msssim_metric = MultiScaleStructuralSimilarityIndexMeasure(data_range=1.0).to(
             self.device
         )
         self.total_mse = 0.0
@@ -48,18 +48,18 @@ class ImageComparisonMetrics:
 
         self.total_mse += F.mse_loss(reconstruction, original).item()
         self.psnr_metric.update(reconstruction, original)
-        self.ssim_metric.update(reconstruction, original)
+        self.msssim_metric.update(reconstruction, original)
         self.num_batches += 1
 
     def finilize(self):
         self.avg_mse = self.total_mse / self.num_batches if self.num_batches else 0.0
         psnr_val = self.psnr_metric.compute()
-        ssim_val = self.ssim_metric.compute()
+        ssim_val = self.msssim_metric.compute()
 
         self.avg_psnr = (
             psnr_val.item() if torch.is_tensor(psnr_val) else float(psnr_val)
         )
-        self.avg_ssim = (
+        self.avg_msssim = (
             ssim_val.item() if torch.is_tensor(ssim_val) else float(ssim_val)
         )
         self.finilized = True
@@ -73,7 +73,7 @@ class ImageComparisonMetrics:
         print(f"Total batches: {self.num_batches}", file=file)
         print(f"MSE:  {self.avg_mse:.6f}", file=file)
         print(f"PSNR: {self.avg_psnr:.2f} dB", file=file)
-        print(f"SSIM: {self.avg_ssim:.4f}", file=file)
+        print(f"MS-SSIM: {self.avg_msssim:.4f}", file=file)
         print("=" * 30 + "\n", file=file)
 
 
@@ -127,13 +127,17 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 metrics_jpeg.update(recon_jpeg, original_tensor)
 
                 # 4. Calculate BPP and stats for this image
-                bpp = (len(payload) * 8.0) / (
+                model_bpp = (len(payload) * 8.0) / (
+                    original_tensor.shape[1] * original_tensor.shape[2]
+                )
+
+                jpeg_bpp = (jpeg_size * 8.0) / (
                     original_tensor.shape[1] * original_tensor.shape[2]
                 )
 
                 # Log per-image results to file
                 print(
-                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp",
+                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {model_bpp:.3f} bpp | jpeg: {jpeg_bpp} bpp",
                     file=f,
                 )
 
@@ -167,7 +171,7 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "DCAL_2018_best.pt"
+    model_name = "Hyperprior_best.pt"
     model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
     run_evaluation(model, datamodule_full, f"{model_name}_eval")
 
