@@ -1,6 +1,6 @@
 import os
 import torch
-from data import ClassImagesDataModule, DF2KDataModule
+from data import ClassImagesDataModule, DF2KDataModule, MinecraftDataModule
 from models import get_train_function
 
 
@@ -18,6 +18,17 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
 datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
+    batch_size=8,
+    ycbcr=False,
+    random_crop=True,
+    patch_size=256,
+    val_patch_size=640,
+    val_batch_size=5
+)
+
+datamodule_minecraft_screenshots = MinecraftDataModule(
+    train_dir="datasets/minecraft_screenshots/train",
+    test_dir="datasets/minecraft_screenshots/test",
     batch_size=8,
     ycbcr=False,
     random_crop=True,
@@ -144,7 +155,7 @@ def main():
         "model_name": "Hyperprior",
         "epochs": 20,
         "lr": 1e-4,
-        "data_module": datamodule_df2k
+        "data_module": datamodule_minecraft_screenshots
     })
 
 if __name__ == "__main__":

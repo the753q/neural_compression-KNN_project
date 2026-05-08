@@ -69,12 +69,11 @@ def get_df2k(convert_to_jpeg = False):
 def get_minecraft_screenshots():
     get_dataset(kaggle_path="sqdartemy/minecraft-screenshots-dataset-with-features", name="minecraft_screenshots")    
     
-    MINECRAFT_TRAIN_DIR = f"{DATASETS_DIR}/minecraft_screenshots/screenshots/train"
-    MINECRAFT_TEST_DIR = f"{DATASETS_DIR}/minecraft_screenshots/screenshots/test"
+    MINECRAFT_TRAIN_DIR = f"{DATASETS_DIR}/minecraft_screenshots/train/train"
+    MINECRAFT_TEST_DIR = f"{DATASETS_DIR}/minecraft_screenshots/test/test"
 
     print("Train test split.")
-    os.rename(f"{DATASETS_DIR}/minecraft_screenshots/screenshots/screenshots",
-             MINECRAFT_TRAIN_DIR)
+    shutil.move(f"{DATASETS_DIR}/minecraft_screenshots/screenshots/screenshots", MINECRAFT_TRAIN_DIR)
 
     os.makedirs(MINECRAFT_TEST_DIR, exist_ok=True)
     all_files = os.listdir(MINECRAFT_TRAIN_DIR)

@@ -127,3 +127,32 @@ class DF2KDataModule(DataModuleBase):
 
         self.train_ds = Subset(train_dataset, train_indices)
         self.val_ds = Subset(val_dataset, val_indices)
+
+
+class MinecraftDataModule(DataModuleBase):
+    def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4,
+                  patch_size = 256, val_patch_size = 512, val_batch_size = 16):
+        super().__init__(random_crop = random_crop, ycbcr=ycbcr,
+                batch_size=batch_size, num_workers=num_workers,
+                  patch_size=patch_size, val_patch_size=val_patch_size, val_batch_size=val_batch_size)
+        
+        self.train_dir = train_dir
+        self.test_dir = test_dir
+
+    def setup(self, stage=None):
+        train_dataset = ImageFolder(self.train_dir, transform=self.transform)
+        val_dataset = ImageFolder(self.train_dir, transform=self.val_transform)
+        test_dataset   = ImageFolder(self.test_dir, transform=self.transform)
+
+        self.test_ds = test_dataset
+
+        indices = list(range(len(train_dataset)))
+        split = int(0.9 * len(indices))
+        rng = torch.Generator().manual_seed(42)
+        perm = torch.randperm(len(indices), generator=rng).tolist()
+
+        train_indices = perm[:split]
+        val_indices = perm[split:]
+
+        self.train_ds = Subset(train_dataset, train_indices)
+        self.val_ds = Subset(val_dataset, val_indices)

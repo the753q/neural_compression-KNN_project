@@ -21,7 +21,6 @@ class AbsConv(nn.Sequential):
         return super().forward(x.abs())
 
 class Hyperprior(pl.LightningModule):
-
     def __init__(self, lambda_=0.01, learning_rate=1e-4):
         super().__init__()
         self.save_hyperparameters()
