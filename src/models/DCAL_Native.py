@@ -264,10 +264,15 @@ class DCAL_Native(pl.LightningModule):
         USE_FANCY_COMPRESSION = False
         if USE_FANCY_COMPRESSION:
             z_compressed = self.entropy_coder(z_quant_join)
+            # original_shape = z_quant_join.shape
+            # z_decompressed = self.entropy_decoder(z_compressed, original_shape)
+            #
             compressed_payload = z_compressed.tobytes()
+            #
         else:
             codec = dahuffman.HuffmanCodec.from_data(payload)
             compressed_payload = codec.encode(payload)
+            # z_decompressed = torch.tensor(codec.decode(z_compressed), dtype=torch.int32).reshape(z_quant_join.shape).to(next(self.parameters()).device)
 
         # De-quantization
         U_rec_Y = self.dequantizer(U_quant_Y)
@@ -297,31 +302,31 @@ class DCAL_Native(pl.LightningModule):
 
         # Convert to YCbCr for processing
         x_ycbcr = rgb_to_ycbcr(x)
-        
+
         # Get original dimensions
         c, h, w = x_ycbcr.shape
-        
+
         # Calculate padding to make dimensions multiples of 8 (due to 3 downsampling stages)
         pad_h = (8 - (h % 8)) % 8
         pad_w = (8 - (w % 8)) % 8
-        
+
         # Apply reflection padding (right and bottom)
         # F.pad expects (left, right, top, bottom) for 4D input
-        x_padded = F.pad(x_ycbcr.unsqueeze(0), (0, pad_w, 0, pad_h), mode='reflect')
-        
+        x_padded = F.pad(x_ycbcr.unsqueeze(0), (0, pad_w, 0, pad_h), mode="reflect")
+
         with torch.no_grad():
             # Process entire image natively
             recon_padded, compressed = self.forward_get_latent(x_padded)
             recon_cae_padded = self.forward_just_cae(x_padded)
-            
+
         # Crop back to original size and remove batch dimension
         recon = recon_padded[:, :, :h, :w].squeeze(0)
         recon_cae = recon_cae_padded[:, :, :h, :w].squeeze(0)
-        
+
         # Convert back to RGB for final output
         full_reconstruction = ycbcr_to_rgb(recon)
         full_reconstruction_cae = ycbcr_to_rgb(recon_cae)
-        
+
         # Ensure compressed payload is in bytes for consistent size calculation
         if isinstance(compressed, np.ndarray):
             compressed_payload = compressed.tobytes()
