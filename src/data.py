@@ -128,7 +128,6 @@ class DF2KDataModule(DataModuleBase):
         self.train_ds = Subset(train_dataset, train_indices)
         self.val_ds = Subset(val_dataset, val_indices)
 
-
 class MinecraftDataModule(DataModuleBase):
     def __init__(self, train_dir, test_dir, random_crop, ycbcr, batch_size=64, num_workers=4,
                   patch_size = 256, val_patch_size = 512, val_batch_size = 16):
