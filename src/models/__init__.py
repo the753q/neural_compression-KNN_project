@@ -4,6 +4,14 @@ from .Balle2017 import Balle2017, train_model as train_balle
 from .CustomCompressor import CustomCompressor, train_model as train_custom
 from .DCAL_LAB import DCAL_LAB, train_model as train_dcal_lab
 from .Hyperprior import Hyperprior, train_model as train_hyperprior
+from .DCAL_YCbCr_Subsampled import (
+    DCAL_YCbCr_Subsampled,
+    train_model as train_dcal_ycbcr_subsampled,
+)
+from .DCAL_YCbCr_Base import (
+    DCAL_YCbCr_Base,
+    train_model as train_dcal_ycbcr_base,
+)
 
 MODEL_REGISTRY = {
     "DCAL_2018": DCAL_2018,
@@ -12,6 +20,8 @@ MODEL_REGISTRY = {
     "CustomCompressor": CustomCompressor,
     "DCAL_LAB": DCAL_LAB,
     "Hyperprior": Hyperprior,
+    "DCAL_YCbCr_Subsampled": DCAL_YCbCr_Subsampled,
+    "DCAL_YCbCr_Base": DCAL_YCbCr_Base,
 }
 
 TRAIN_REGISTRY = {
@@ -21,6 +31,8 @@ TRAIN_REGISTRY = {
     "CustomCompressor": train_custom,
     "DCAL_LAB": train_dcal_lab,
     "Hyperprior": train_hyperprior,
+    "DCAL_YCbCr_Subsampled": train_dcal_ycbcr_subsampled,
+    "DCAL_YCbCr_Base": train_dcal_ycbcr_base,
 }
 
 
