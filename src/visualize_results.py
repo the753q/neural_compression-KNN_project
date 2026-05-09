@@ -41,13 +41,13 @@ class ResultVisualizer:
                 # Parse model RD
                 model_bpp = re.search(r"model_bpp:\s+([\d.]+)", content)
                 model_psnr = re.search(r"model_psnr:\s+([\d.]+)", content)
-                model_ssim = re.search(r"model_ssim:\s+([\d.]+)", content)
+                model_msssim = re.search(r"model_ms-ssim:\s+([\d.]+)", content)
                 
                 if model_bpp and model_psnr:
                     bpp = float(model_bpp.group(1))
                     psnr = float(model_psnr.group(1))
-                    ssim = float(model_ssim.group(1)) if model_ssim else 0.0
-                    model_rd = (bpp, psnr, ssim)
+                    msssim = float(model_msssim.group(1)) if model_msssim else 0.0
+                    model_rd = (bpp, psnr, msssim)
 
                 # Parse JPEG RD curve
                 jpeg_section = re.search(r"\[JPEG_RD_CURVE\](.*?)(?:\n\n|\Z)", content, re.DOTALL)
@@ -56,12 +56,12 @@ class ResultVisualizer:
                     for line in lines:
                         m_bpp = re.search(r"bpp=([\d.]+)", line)
                         m_psnr = re.search(r"psnr=([\d.]+)", line)
-                        m_ssim = re.search(r"ssim=([\d.]+)", line)
+                        m_ssim = re.search(r"ms-ssim=([\d.]+)", line)
                         if m_bpp and m_psnr:
                             bpp = float(m_bpp.group(1))
                             psnr = float(m_psnr.group(1))
-                            ssim = float(m_ssim.group(1)) if m_ssim else 0.0
-                            jpeg_rd.append((bpp, psnr, ssim))
+                            msssim = float(m_ssim.group(1)) if m_ssim else 0.0
+                            jpeg_rd.append((bpp, psnr, msssim))
                 
                 jpeg_rd.sort(key=lambda x: x[0])
         except Exception as e:
@@ -75,7 +75,7 @@ class ResultVisualizer:
             return
 
         now = datetime.datetime.now().strftime("%m_%d_%H_%M")
-        metrics = [("psnr", "PSNR (dB)", 1), ("ssim", "SSIM", 2)]
+        metrics = [("psnr", "PSNR (dB)", 1), ("ms-ssim", "MS-SSIM", 2)]
         
         for metric_key, y_label, metric_idx in metrics:
             # Use original single-plot size
@@ -175,7 +175,7 @@ class ResultVisualizer:
         with dpg.item_handler_registry(tag="available_list_handler"):
             dpg.add_item_double_clicked_handler(callback=self.on_available_double_click)
 
-        with dpg.window(label="RD Plot Generator (PSNR & SSIM)", width=1000, height=600):
+        with dpg.window(label="RD Plot Generator (PSNR & MS-SSIM)", width=1000, height=600):
             with dpg.group(horizontal=True):
                 # Left Column: Available Runs
                 with dpg.child_window(width=480, height=450):
@@ -205,7 +205,7 @@ class ResultVisualizer:
                     dpg.add_button(label="Update Name", callback=self.rename_run, width=-1)
             
             dpg.add_spacer(height=10)
-            dpg.add_button(label="GENERATE AND SAVE PLOTS (PSNR & SSIM)", callback=self.save_matplotlib_plot, width=-1, height=50)
+            dpg.add_button(label="GENERATE AND SAVE PLOTS (PSNR & MS-SSIM)", callback=self.save_matplotlib_plot, width=-1, height=50)
             dpg.add_text("Note: First selected run defines the JPEG baseline curves.", color=(255, 200, 100))
 
         dpg.create_viewport(title='RD Plot Generator', width=1020, height=640)

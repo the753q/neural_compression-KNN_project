@@ -171,7 +171,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
         print(f"model_psnr: {metrics_ours.avg_psnr:.4f}", file=f)
-        print(f"model_ssim: {metrics_ours.avg_msssim:.4f}", file=f)
+        print(f"model_ms-ssim: {metrics_ours.avg_msssim:.4f}", file=f)
 
         print("\n[JPEG_RD_CURVE]", file=f)
         for q in jpeg_qualities:
