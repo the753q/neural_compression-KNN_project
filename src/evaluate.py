@@ -11,7 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from data import DF2KDataModule, ClassImagesDataModule
+from data import DF2KDataModule, ClassImagesDataModule, MinecraftDataModule
 from models import get_model
 from utils import get_jpeg_image
 
@@ -171,14 +171,14 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
         print(f"model_psnr: {metrics_ours.avg_psnr:.4f}", file=f)
-        print(f"model_ssim: {metrics_ours.avg_ssim:.4f}", file=f)
+        print(f"model_ssim: {metrics_ours.avg_msssim:.4f}", file=f)
 
         print("\n[JPEG_RD_CURVE]", file=f)
         for q in jpeg_qualities:
             jpeg_metrics[q].finilize()
             avg_bpp_q = sum(jpeg_bpps[q]) / len(jpeg_bpps[q])
             print(
-                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ssim={jpeg_metrics[q].avg_ssim:.4f}",
+                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ms-ssim={jpeg_metrics[q].avg_msssim:.4f}",
                 file=f,
             )
 
@@ -187,14 +187,26 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 
 def main():
     # We use batch_size=1 and no crop for high-level evaluation on full images
-    datamodule_full = ClassImagesDataModule(
-        data_dir="datasets/DF2K/test",
+    # datamodule_full = ClassImagesDataModule(
+    #     data_dir="datasets/DF2K/test",
+    #     batch_size=1,
+    #     random_crop=False,
+    #     ycbcr=False,  # Standardized to RGB for eval loader
+    # )
+
+    datamodule_full = MinecraftDataModule(
+        train_dir="datasets/minecraft_screenshots/train",
+        test_dir="datasets/minecraft_screenshots/test",
         batch_size=1,
+        ycbcr=False,
         random_crop=False,
-        ycbcr=False,  # Standardized to RGB for eval loader
+        val_batch_size=1
     )
 
-    models = ["DCAL_Native_flops_best.pt", "DCAL_2018_flops_best.pt"]
+    models = ["hyperprior_minecraft_001_best.pt",
+               "hyperprior_minecraft_005_best.pt",
+               "hyperprior_minecraft_01_best.pt",
+               "hyperprior_minecraft_0002_best.pt"]
     for model_name in models:
         try:
             model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
