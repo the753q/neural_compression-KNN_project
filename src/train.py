@@ -15,6 +15,16 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
     patch_size=128,
 )
 
+datamodule_default_imagenet10k_LAB = ClassImagesDataModule(
+    data_dir="datasets/imagenet_10K/imagenet_subtrain",
+    batch_size=64,
+    num_workers=10,
+    random_crop=True,
+    ycbcr=False,
+    lab=True,
+    patch_size=128,
+)
+
 datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
@@ -124,9 +134,30 @@ def experiment5():
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_flops_best.pt")
 
 
+def experiment_lab():
+    EXPERIMENT_NAME = "dcal_lab_imagenet"
+    MODEL_NAME = "DCAL_LAB"
+    EPOCHS = 100  # Will be overridden by flops limit
+    LEARNING_RATE = 1e-4
+    TARGET_FLOPS = 3e15
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k_LAB,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+        target_flops=TARGET_FLOPS,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_flops_best.pt")
+
+
 def main():
     # experiment4()
-    experiment5()
+    experiment_lab()
 
 
 if __name__ == "__main__":

@@ -2,12 +2,14 @@ from .DCAL_2018 import DCAL_2018, train_model as train_dcal
 from .DCAL_Native import DCAL_Native, train_model as train_dcal_native
 from .Balle2017 import Balle2017, train_model as train_balle
 from .CustomCompressor import CustomCompressor, train_model as train_custom
+from .DCAL_LAB import DCAL_LAB, train_model as train_dcal_lab
 
 MODEL_REGISTRY = {
     "DCAL_2018": DCAL_2018,
     "DCAL_Native": DCAL_Native,
     "Balle2017": Balle2017,
     "CustomCompressor": CustomCompressor,
+    "DCAL_LAB": DCAL_LAB,
 }
 
 TRAIN_REGISTRY = {
@@ -15,6 +17,7 @@ TRAIN_REGISTRY = {
     "DCAL_Native": train_dcal_native,
     "Balle2017": train_balle,
     "CustomCompressor": train_custom,
+    "DCAL_LAB": train_dcal_lab,
 }
 
 

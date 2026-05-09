@@ -194,7 +194,7 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    models = ["DCAL_Native_flops_best.pt", "DCAL_2018_flops_best.pt"]
+    models = ["DCAL_LAB_flops_best.pt"]
     for model_name in models:
         try:
             model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
