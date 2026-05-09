@@ -27,6 +27,8 @@ class Hyperprior(pl.LightningModule):
         self.name = "Hyperprior"
         self.lambda_ = lambda_
 
+        print(f"USING {N} {M}")
+
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 
             nn.Conv2d(3, N, kernel_size=5, stride=2, padding=2), 

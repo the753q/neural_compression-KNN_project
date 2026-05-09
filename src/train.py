@@ -182,12 +182,12 @@ def general_experiment(data):
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{data["experiment_name"]}_best.pt")
 
-def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_):
+def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_, N, M):
     MODEL_NAME = "Hyperprior"
 
     train_fn = get_train_function(MODEL_NAME)
     best_model = train_fn(
-        data_module, experiment_name, epochs, lr, lambda_
+        data_module, experiment_name, epochs, lr, lambda_, N, M
     )
 
     # save model as torch object
@@ -196,22 +196,12 @@ def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_):
 
 
 def main():
-    # general_experiment({
-    #     "experiment_name": "hyperprior_df2k",
-    #     "model_name": "Hyperprior",
-    #     "epochs": 20,
-    #     "lr": 1e-4,
-    #     "data_module": datamodule_minecraft_screenshots
-    # })
+    experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 1, 1e-4, 0.002, 128, 192)
 
-    experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 150, 1e-4, 0.002, 128, 192)
-    experiment_hyperprior("hyperprior_combined_001", datamodule_combined, 150, 1e-4, 0.01, 128, 192)
-    experiment_hyperprior("hyperprior_combined_005", datamodule_combined, 150, 1e-4, 0.05, 128, 192)
-    experiment_hyperprior("hyperprior_combined_01", datamodule_combined, 150, 1e-4, 0.1, 128, 192)
-
-    # experiment_hyperprior("hyperprior_minecraft_001", datamodule_minecraft_screenshots, 100, 1e-4, 0.01)
-    # experiment_hyperprior("hyperprior_minecraft_005", datamodule_minecraft_screenshots, 100, 1e-4, 0.05)
-    # experiment_hyperprior("hyperprior_minecraft_01", datamodule_minecraft_screenshots, 100, 1e-4, 0.1)
+    # experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 150, 1e-4, 0.002, 128, 192)
+    # experiment_hyperprior("hyperprior_combined_001", datamodule_combined, 150, 1e-4, 0.01, 128, 192)
+    # experiment_hyperprior("hyperprior_combined_005", datamodule_combined, 150, 1e-4, 0.05, 128, 192)
+    # experiment_hyperprior("hyperprior_combined_01", datamodule_combined, 150, 1e-4, 0.1, 128, 192)
 
 if __name__ == "__main__":
     main()
