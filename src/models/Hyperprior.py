@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import CSVLogger
 import numpy as np
 import os
@@ -26,8 +26,6 @@ class Hyperprior(pl.LightningModule):
         self.save_hyperparameters()
         self.name = "Hyperprior"
         self.lambda_ = lambda_
-
-        print(f"USING {N} {M}")
 
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 
@@ -251,13 +249,19 @@ def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_, N=6
         mode="min",
     )
 
+    early_stop_callback = EarlyStopping(
+        monitor="val_loss",
+        patience=30,    
+        mode="min"
+    )
+
     csv_logger = CSVLogger("logs/", name=experiment_name)
 
     trainer = pl.Trainer(
         max_epochs=epochs,
         accelerator="auto",
         precision="bf16-mixed",
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, early_stop_callback],
         logger=csv_logger,
     )
 
