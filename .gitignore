@@ -3,6 +3,9 @@
 *lightning_logs/
 checkpoints/
 outputs/
+*.png
+*.jpg
+*.jpeg
 logs/
 
 # Byte-compiled / optimized / DLL files

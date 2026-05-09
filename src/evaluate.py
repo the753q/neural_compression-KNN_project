@@ -87,7 +87,14 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 
     metrics_ours = ImageComparisonMetrics("original", "ours", device=device)
     metrics_cae = ImageComparisonMetrics("original", "cae_only", device=device)
-    metrics_jpeg = ImageComparisonMetrics("original", "jpeg", device=device)
+    # JPEG qualities to evaluate
+    jpeg_qualities = [1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+    jpeg_metrics = {
+        q: ImageComparisonMetrics(f"original", f"jpeg_q{q}", device=device)
+        for q in jpeg_qualities
+    }
+    jpeg_bpps = {q: [] for q in jpeg_qualities}
+    model_bpps = []
 
     # Create timestamped output directory
     now = datetime.datetime.now().strftime("%m_%d_%H_%M")
@@ -107,6 +114,8 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 
                 # Assuming batch size 1 for full images, or first image of batch
                 original_tensor = batch[0].to(device)  # (C, H, W)
+                img_pil = TF.to_pil_image(original_tensor.cpu())
+                num_pixels = original_tensor.shape[1] * original_tensor.shape[2]
 
                 # 1. Model prediction
                 result = model.evaluate_image(original_tensor)
@@ -114,30 +123,25 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 recon_cae = result.get("cae_reconstruction", None)
                 payload = result["compressed_payload"]
 
-                # 2. JPEG baseline
-                # Convert tensor to PIL for JPEG utility
-                img_pil = TF.to_pil_image(original_tensor.cpu())
-                jpeg_pil, jpeg_size = get_jpeg_image(img_pil)
-                recon_jpeg = TF.to_tensor(jpeg_pil)
-
-                # 3. Update metrics
+                # 2. Update model metrics
                 metrics_ours.update(recon_ours, original_tensor)
                 if recon_cae is not None:
                     metrics_cae.update(recon_cae, original_tensor)
-                metrics_jpeg.update(recon_jpeg, original_tensor)
 
-                # 4. Calculate BPP and stats for this image
-                model_bpp = (len(payload) * 8.0) / (
-                    original_tensor.shape[1] * original_tensor.shape[2]
-                )
+                # 3. JPEG baselines at different qualities
+                for q in jpeg_qualities:
+                    jpeg_pil, jpeg_size = get_jpeg_image(img_pil, quality=q)
+                    recon_jpeg = TF.to_tensor(jpeg_pil)
+                    jpeg_metrics[q].update(recon_jpeg, original_tensor)
+                    jpeg_bpps[q].append((jpeg_size * 8.0) / num_pixels)
 
-                jpeg_bpp = (jpeg_size * 8.0) / (
-                    original_tensor.shape[1] * original_tensor.shape[2]
-                )
+                # 4. Calculate BPP for our model
+                bpp = (len(payload) * 8.0) / num_pixels
+                model_bpps.append(bpp)
 
                 # Log per-image results to file
                 print(
-                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {model_bpp:.3f} bpp | jpeg: {jpeg_bpp} bpp",
+                    f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp",
                     file=f,
                 )
 
@@ -145,8 +149,9 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                     # Print status to console
                     print(f"Saving comparison for image {i}...")
                     save_path = f"{experiment_dir}/{evaluation_name}_{i}_comparison.png"
-                    # Create a comparison strip: Original | CAE | Ours
+                    # Create a comparison strip: Original | Ours
                     to_stack = [original_tensor.cpu(), recon_ours.cpu()]
+                    # Optionally include CAE if it exists
                     if recon_cae is not None:
                         to_stack.insert(1, recon_cae.cpu())
 
@@ -156,8 +161,26 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         # Final summaries to file
         if metrics_cae.num_batches > 0:
             metrics_cae.print_summary(file=f)
+
         metrics_ours.print_summary(file=f)
-        metrics_jpeg.print_summary(file=f)
+
+        # Calculate final averages
+        metrics_ours.finilize()
+        avg_bpp_ours = sum(model_bpps) / len(model_bpps)
+
+        print("\n[RD_DATA]", file=f)
+        print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
+        print(f"model_psnr: {metrics_ours.avg_psnr:.4f}", file=f)
+        print(f"model_ssim: {metrics_ours.avg_ssim:.4f}", file=f)
+
+        print("\n[JPEG_RD_CURVE]", file=f)
+        for q in jpeg_qualities:
+            jpeg_metrics[q].finilize()
+            avg_bpp_q = sum(jpeg_bpps[q]) / len(jpeg_bpps[q])
+            print(
+                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ssim={jpeg_metrics[q].avg_ssim:.4f}",
+                file=f,
+            )
 
     print(f"Evaluation complete. Results saved to {experiment_dir}")
 
@@ -171,9 +194,13 @@ def main():
         ycbcr=False,  # Standardized to RGB for eval loader
     )
 
-    model_name = "hyperprior_df2k_best.pt"
-    model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
-    run_evaluation(model, datamodule_full, f"{model_name}_eval")
+    models = ["DCAL_Native_flops_best.pt", "DCAL_2018_flops_best.pt"]
+    for model_name in models:
+        try:
+            model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
+            run_evaluation(model, datamodule_full, f"{model_name}_eval", n_images=30)
+        except Exception as e:
+            print(f"Error evaluating {model_name}: {e}")
 
 if __name__ == "__main__":
     main()

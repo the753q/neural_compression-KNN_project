@@ -2,12 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger
-import os
 import numpy as np
 import constriction
-from utils import ImagePatcher, rgb_to_ycbcr, ycbcr_to_rgb
+from training_utils import universal_train_model
 
 
 class GDN(nn.Module):
@@ -243,39 +240,12 @@ class Balle2017(pl.LightningModule):
         return {"reconstruction": full_reconstruction, "compressed_payload": payload}
 
 
-def train_model(datamodule, experiment_name, epochs, learning_rate):
-    model = Balle2017(learning_rate=learning_rate)
-
-    checkpoint_filename = f"{experiment_name}-{model.name}-best"
-
-    checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints/",
-        filename=checkpoint_filename,
-        save_top_k=1,
-        monitor="val_loss",
-        mode="min",
+def train_model(datamodule, experiment_name, epochs, learning_rate, target_flops=None):
+    return universal_train_model(
+        Balle2017,
+        datamodule,
+        experiment_name,
+        epochs,
+        learning_rate,
+        target_flops=target_flops,
     )
-
-    csv_logger = CSVLogger("logs/", name=experiment_name)
-
-    trainer = pl.Trainer(
-        max_epochs=epochs,
-        accelerator="auto",
-        precision="bf16-mixed",
-        callbacks=[checkpoint_callback],
-        logger=csv_logger,
-    )
-
-    print("=" * 30)
-    print(f"Started experiment: {experiment_name}")
-    print(f"Starting training for {model.name}...")
-    trainer.fit(model, datamodule)
-
-    best_model = Balle2017.load_from_checkpoint(checkpoint_callback.best_model_path)
-
-    print(
-        f"Training complete. Best model saved to checkpoints/{os.path.basename(checkpoint_callback.best_model_path)}"
-    )
-    print("=" * 30)
-
-    return best_model

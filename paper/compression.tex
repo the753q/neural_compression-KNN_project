@@ -178,7 +178,7 @@ We plan to conduct more experiments with this model, including:
 \section{Results}
 This section provides the results of the tests performed on the described experiments, as measured by metrics relevant to learned image compression.
 
-\subsection{Base model}
+\subsection{Base Model}
 In this paper, we describe our attempt at reimplementing the existing work of a CAE-based architecture \cite{cheng_deep_2018}. Now, we report the achieved results.
 
 \paragraph{Patch-Level Evaluation}
@@ -253,6 +253,59 @@ Our evaluation demonstrates that the proposed implementation achieves distinctiv
 
 However, the implemented architecture fails when compared to the JPEG baseline, which currently outperforms our approach in terms of standard distortion metrics (PSNR and SSIM). The average PSNR for our model across the dataset is 25.18 dB, compared to 38.57 dB for JPEG. 
 
+
+
+
+
+
+\subsection{Base Model Modifications}
+Based on the research work \cite{cheng_deep_2018}, which we took as inspiration for our base model, we performed and evaluated various modifications to the model architecture.
+Each model change was trained for a constant number of FLOPS $3 \times 10^{15}$ and compared with JPEG on a Rate Distortion Curve. PSNR and SSIM scores are calculated and compared to BPP. JPEG compression statistics are calculated for quality settings of 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, and 100. Results of JPEG scoring are interpolated to allow for comparison with our models at similar BPP scores. 
+
+We switched the base implementation's usage of patches during implementation to a simple padding pipeline, allowing us to input full-resolution images, as showcased in figure \ref{fig:OG_base_Native}. The pipeline padded the image to ensure its dimensions were multiples of 8 for the downsampling stages, with the extra area being cropped out to obtain the final reconstructed image. We note the sudden change in BPP scores between the $Full Resolution$ and $Base - w/ Patches$ approaches. 
+
+Additionally, we switched the YCbCr color space to LAB, which had a slight negative effect on the SSIM score. It also seems to affect the SSIM of patched and non-patched models in different ways, as shown in the figure \ref{fig:rd_ssim_LAB}. Notable is also the negative effect of LAB on the patched model, which to the subjective eye looks closer to original than the YCbCr, as LAB seemingly allowed the model to preserve the colors better. Example can be seen in the figure \ref{fig:top_YCbCr_bot_LAB}. 
+
+
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/tomas/OG_base_Native.png}
+  \caption{EXP1: Comparison of original image, and its compressed variants using the base model and its full-resolution modification.}
+  \label{fig:OG_base_Native}
+\end{figure*}
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/tomas/rd_ssim_LAB.png}
+  \caption{EXP1: RD curve of SSIM vs BPP, with LAB color space modification. Comparing between patching and non-patching architectures, switching the color space doesn't yield the same change in SSIM score.}
+  \label{fig:rd_ssim_LAB}
+\end{figure*}
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/tomas/top_YCbCr_bot_LAB.png}
+  \caption{EXP1: YCbCr (top) vs LAB (bottom): Comparison of original image, base model and full-resolution modification.}
+  \label{fig:top_YCbCr_bot_LAB}
+\end{figure*}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 %\section{Conclusion}
 %Model based compression requires more processing power at inference, also showing differences %between architectures, depending on whether a CPU or GPU is used \cite{cheng_deep_2018}... 
 
@@ -270,7 +323,7 @@ Most images contain only a handful of regions of interest. Focusing the processi
 
 
 \section*{Source Code}
-The implementation can be accessed from a public GitHub repository at 
+The implementation can be accessed via a public GitHub repository at
 \url{https://github.com/the753q/neural_compression-KNN_project}.
 
 \twocolumn[
