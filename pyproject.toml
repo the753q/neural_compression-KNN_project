@@ -12,6 +12,7 @@ dependencies = [
     "attrs==26.1.0",
     "certifi==2026.2.25",
     "charset-normalizer==3.4.7",
+    "compressai>=1.2.6",
     "constriction==0.4.2",
     "cuda-bindings==13.2.0",
     "cuda-pathfinder==1.5.2",
