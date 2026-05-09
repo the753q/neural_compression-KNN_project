@@ -159,12 +159,18 @@ class Hyperprior(pl.LightningModule):
         z = self.h_a(y)
         
         # compress prior info
+     
         z_strings, z_size = self.entropy_bottleneck.compress(z), z.shape[2:]
+
         z_hat = self.entropy_bottleneck.decompress(z_strings, z.shape[2:])
         sigma = self.h_s(z_hat)
         # compress latent
-        y_strings = self.gaussian_conditional.compress(y, sigma)
 
+
+        # sigma = sigma.clamp(min = 1e-6, max=40)
+        # TODO can cause segfault if sigma too big or too small
+        y_strings = self.gaussian_conditional.compress(y, sigma)
+ 
         # payload = pickle.dumps({
         #     "z_strings": z_strings,
         #     "z_size": z_size,
@@ -173,7 +179,7 @@ class Hyperprior(pl.LightningModule):
 
         # pack, big endian, u16x2 z dimensions, u32 len(z_strings), z_strings, y_strings
         payload = struct.pack(">HHI", z_size[0], z_size[1], len(z_strings[0])) + z_strings[0] + y_strings[0]
-
+        
         return payload
     
     def decompress(self, payload):
@@ -188,6 +194,8 @@ class Hyperprior(pl.LightningModule):
         }
 
         # decompress prior info
+
+        # TODO can cause segfault if sigma too big or too small
         z_hat = self.entropy_bottleneck.decompress(data["z_strings"], data["z_size"])
 
         sigma = self.h_s(z_hat)
@@ -200,11 +208,13 @@ class Hyperprior(pl.LightningModule):
 
         return x_hat
 
+
     def evaluate_image(self, x):
         """Standardized evaluation method. Processes full image at once."""
         # Build tables needed for encoding
         self.entropy_bottleneck.update()
-        scale_table = torch.exp(torch.linspace(math.log(0.11), math.log(256), 64))
+        # TODO if this is wronly set, can cause seg fault in gaussian_conditional, 64 cols specifically
+        scale_table = torch.exp(torch.linspace(math.log(0.01), math.log(128), 256))
         self.gaussian_conditional.update_scale_table(scale_table)
         self.gaussian_conditional.update()
 
@@ -223,6 +233,7 @@ class Hyperprior(pl.LightningModule):
             ).squeeze(0)
         else:
             x_padded = x
+
 
         with torch.no_grad():
             # Process entire image
@@ -251,7 +262,7 @@ def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_, N=6
 
     early_stop_callback = EarlyStopping(
         monitor="val_loss",
-        patience=30,    
+        patience=30,
         mode="min"
     )
 

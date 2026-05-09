@@ -83,6 +83,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     val_loader = datamodule.val_dataloader()
 
     device = next(model.parameters()).device
+    # model.float()
     model.eval()
 
     metrics_ours = ImageComparisonMetrics("original", "ours", device=device)
@@ -142,7 +143,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 # Log per-image results to file
                 print(
                     f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp",
-                    file=f,
+                    file=f, flush=True
                 )
 
                 if i < n_save:
@@ -158,15 +159,20 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                     comparison = torch.cat(to_stack, dim=2)
                     save_image(comparison, save_path)
 
+
+
         # Final summaries to file
         if metrics_cae.num_batches > 0:
-            metrics_cae.print_summary(file=f)
+            metrics_cae.print_summary(file=f, flush=True)
 
         metrics_ours.print_summary(file=f)
+
+     
 
         # Calculate final averages
         metrics_ours.finilize()
         avg_bpp_ours = sum(model_bpps) / len(model_bpps)
+
 
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
@@ -181,6 +187,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ms-ssim={jpeg_metrics[q].avg_msssim:.4f}",
                 file=f,
             )
+
 
     print(f"Evaluation complete. Results saved to {experiment_dir}")
 
