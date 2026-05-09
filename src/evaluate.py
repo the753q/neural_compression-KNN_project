@@ -5,13 +5,17 @@ import torch
 import torch.nn.functional as F
 from torchvision import transforms
 import torchvision.transforms.functional as TF
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.image import (
+    PeakSignalNoiseRatio,
+    StructuralSimilarityIndexMeasure,
+    MultiScaleStructuralSimilarityIndexMeasure,
+)
 from torchvision.utils import save_image
 import matplotlib
 
 matplotlib.use("Agg")
 
-from data import DF2KDataModule, ClassImagesDataModule
+from data import DF2KDataModule, ClassImagesDataModule, MinecraftDataModule
 from models import get_model
 from utils import get_jpeg_image
 
@@ -29,9 +33,9 @@ class ImageComparisonMetrics:
 
     def reset(self):
         self.psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-        self.ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(
-            self.device
-        )
+        self.msssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
+            data_range=1.0
+        ).to(self.device)
         self.total_mse = 0.0
         self.num_batches = 0
         self.finilized = False
@@ -48,18 +52,18 @@ class ImageComparisonMetrics:
 
         self.total_mse += F.mse_loss(reconstruction, original).item()
         self.psnr_metric.update(reconstruction, original)
-        self.ssim_metric.update(reconstruction, original)
+        self.msssim_metric.update(reconstruction, original)
         self.num_batches += 1
 
     def finilize(self):
         self.avg_mse = self.total_mse / self.num_batches if self.num_batches else 0.0
         psnr_val = self.psnr_metric.compute()
-        ssim_val = self.ssim_metric.compute()
+        ssim_val = self.msssim_metric.compute()
 
         self.avg_psnr = (
             psnr_val.item() if torch.is_tensor(psnr_val) else float(psnr_val)
         )
-        self.avg_ssim = (
+        self.avg_msssim = (
             ssim_val.item() if torch.is_tensor(ssim_val) else float(ssim_val)
         )
         self.finilized = True
@@ -73,7 +77,7 @@ class ImageComparisonMetrics:
         print(f"Total batches: {self.num_batches}", file=file)
         print(f"MSE:  {self.avg_mse:.6f}", file=file)
         print(f"PSNR: {self.avg_psnr:.2f} dB", file=file)
-        print(f"SSIM: {self.avg_ssim:.4f}", file=file)
+        print(f"MS-SSIM: {self.avg_msssim:.4f}", file=file)
         print("=" * 30 + "\n", file=file)
 
 
@@ -171,14 +175,14 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
         print(f"model_psnr: {metrics_ours.avg_psnr:.4f}", file=f)
-        print(f"model_ssim: {metrics_ours.avg_ssim:.4f}", file=f)
+        print(f"model_ms-ssim: {metrics_ours.avg_msssim:.4f}", file=f)
 
         print("\n[JPEG_RD_CURVE]", file=f)
         for q in jpeg_qualities:
             jpeg_metrics[q].finilize()
             avg_bpp_q = sum(jpeg_bpps[q]) / len(jpeg_bpps[q])
             print(
-                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ssim={jpeg_metrics[q].avg_ssim:.4f}",
+                f"q={q}: bpp={avg_bpp_q:.6f}, psnr={jpeg_metrics[q].avg_psnr:.4f}, ms-ssim={jpeg_metrics[q].avg_msssim:.4f}",
                 file=f,
             )
 
@@ -187,11 +191,20 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 
 def main():
     # We use batch_size=1 and no crop for high-level evaluation on full images
-    datamodule_full = ClassImagesDataModule(
-        data_dir="datasets/imagenet_10K/imagenet_subtrain",
+    # datamodule_full = ClassImagesDataModule(
+    #     data_dir="datasets/DF2K/test",
+    #     batch_size=1,
+    #     random_crop=False,
+    #     ycbcr=False,  # Standardized to RGB for eval loader
+    # )
+
+    datamodule_full = MinecraftDataModule(
+        train_dir="datasets/minecraft_screenshots/train",
+        test_dir="datasets/minecraft_screenshots/test",
         batch_size=1,
+        ycbcr=False,
         random_crop=False,
-        ycbcr=False,  # Standardized to RGB for eval loader
+        val_batch_size=1,
     )
 
     models = ["DCAL_LAB_flops_best.pt"]
