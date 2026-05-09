@@ -204,11 +204,10 @@ def main():
     #     "data_module": datamodule_minecraft_screenshots
     # })
 
-    experiment_hyperprior("hyperprior_df2k_001", datamodule_combined, 1, 1e-4, 0.01)
-
-    # experiment_hyperprior("hyperprior_df2k_001", datamodule_df2k, 100, 1e-4, 0.01)
-    # experiment_hyperprior("hyperprior_df2k_005", datamodule_df2k, 100, 1e-4, 0.05)
-    # experiment_hyperprior("hyperprior_df2k_01", datamodule_df2k, 100, 1e-4, 0.1)
+    experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 150, 1e-4, 0.002, 128, 192)
+    experiment_hyperprior("hyperprior_combined_001", datamodule_combined, 150, 1e-4, 0.01, 128, 192)
+    experiment_hyperprior("hyperprior_combined_005", datamodule_combined, 150, 1e-4, 0.05, 128, 192)
+    experiment_hyperprior("hyperprior_combined_01", datamodule_combined, 150, 1e-4, 0.1, 128, 192)
 
     # experiment_hyperprior("hyperprior_minecraft_001", datamodule_minecraft_screenshots, 100, 1e-4, 0.01)
     # experiment_hyperprior("hyperprior_minecraft_005", datamodule_minecraft_screenshots, 100, 1e-4, 0.05)

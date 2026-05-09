@@ -21,14 +21,11 @@ class AbsConv(nn.Sequential):
         return super().forward(x.abs())
 
 class Hyperprior(pl.LightningModule):
-    def __init__(self, lambda_=0.01, learning_rate=1e-4):
+    def __init__(self, lambda_=0.01, learning_rate=1e-4, N = 64, M = 96):
         super().__init__()
         self.save_hyperparameters()
         self.name = "Hyperprior"
         self.lambda_ = lambda_
-
-        N = 64
-        M = 96
 
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 
@@ -239,8 +236,8 @@ class Hyperprior(pl.LightningModule):
         return {"reconstruction": full_reconstruction, "compressed_payload": payload}
 
 
-def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_):
-    model = Hyperprior(learning_rate=learning_rate, lambda_=lambda_)
+def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_, N=64, M=96):
+    model = Hyperprior(learning_rate=learning_rate, lambda_=lambda_, N = N, M=M)
 
     checkpoint_filename = f"{experiment_name}-{model.name}-best"
 
