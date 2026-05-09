@@ -194,19 +194,37 @@ def main():
     #     ycbcr=False,  # Standardized to RGB for eval loader
     # )
 
-    datamodule_full = MinecraftDataModule(
-        train_dir="datasets/minecraft_screenshots/train",
-        test_dir="datasets/minecraft_screenshots/test",
+    # datamodule_full = MinecraftDataModule(
+    #     train_dir="datasets/minecraft_screenshots/train",
+    #     test_dir="datasets/minecraft_screenshots/test",
+    #     batch_size=1,
+    #     ycbcr=False,
+    #     random_crop=False,
+    #     val_batch_size=1
+    # )
+
+    datamodule_full = DF2KDataModule(
+        train_dir="datasets/DF2K/train",
+        test_dir="datasets/DF2K/test",
         batch_size=1,
         ycbcr=False,
         random_crop=False,
         val_batch_size=1
     )
 
-    models = ["hyperprior_minecraft_001_best.pt",
+    models_minecraft = ["hyperprior_minecraft_001_best.pt",
                "hyperprior_minecraft_005_best.pt",
                "hyperprior_minecraft_01_best.pt",
                "hyperprior_minecraft_0002_best.pt"]
+    
+    models_hyperprior = ["hyperprior_df2k_001_best.pt",
+            "hyperprior_df2k_005_best.pt",
+            "hyperprior_df2k_01_best.pt",
+            "hyperprior_df2k_0002_best.pt"]
+    
+    # models = models_minecraft
+    models = models_minecraft + models_hyperprior
+
     for model_name in models:
         try:
             model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)
