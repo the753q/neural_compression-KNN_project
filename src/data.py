@@ -69,13 +69,15 @@ class DataModuleBase(pl.LightningDataModule):
                     transforms.CenterCrop((self.val_patch_size, self.val_patch_size))
                 )
 
+        t.append(transforms.ToTensor())
+        val_t.append(transforms.ToTensor())
+
         if ycbcr:
             t.append(transforms.Lambda(lambda x: rgb_to_ycbcr(x)))
             val_t.append(transforms.Lambda(lambda x: rgb_to_ycbcr(x)))
         elif lab:
             t.append(transforms.Lambda(lambda x: rgb_to_lab_norm(x)))
-        t.append(transforms.ToTensor())
-        val_t.append(transforms.ToTensor())
+            val_t.append(transforms.Lambda(lambda x: rgb_to_lab_norm(x)))
 
         self.transform = transforms.Compose(t)
         self.val_transform = transforms.Compose(val_t)
