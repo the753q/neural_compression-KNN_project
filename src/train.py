@@ -272,6 +272,27 @@ def experiment_ycbcr_base():
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
 
+def experiment_dcal(model):
+    """
+    Train DCAL_simple model on ImageNet.
+    """
+    EXPERIMENT_NAME = model
+    MODEL_NAME = model
+    EPOCHS = 50
+    LEARNING_RATE = 1e-4
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}.pt")
+
 
 def main():
     experiment_ycbcr_subsampled()

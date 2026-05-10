@@ -12,6 +12,22 @@ from .DCAL_YCbCr_Base import (
     DCAL_YCbCr_Base,
     train_model as train_dcal_ycbcr_base,
 )
+from .DCAL_pool import (
+    DCAL_pool,
+    train_model as train_dcal_pool
+)
+from .DCAL_triple import (
+    DCAL_triple,
+    train_model as train_dcal_triple
+)
+from .DCAL_simple import (
+    DCAL_simple,
+    train_model as train_dcal_simple
+)
+from .DCAL_extended import (
+    DCAL_extended,
+    train_model as train_dcal_extended
+)
 
 MODEL_REGISTRY = {
     "DCAL_2018": DCAL_2018,
@@ -22,6 +38,10 @@ MODEL_REGISTRY = {
     "Hyperprior": Hyperprior,
     "DCAL_YCbCr_Subsampled": DCAL_YCbCr_Subsampled,
     "DCAL_YCbCr_Base": DCAL_YCbCr_Base,
+    "DCAL_pool": DCAL_pool,
+    "DCAL_triple": DCAL_triple,
+    "DCAL_simple": DCAL_simple,
+    "DCAL_extended": DCAL_extended,
 }
 
 TRAIN_REGISTRY = {
@@ -33,6 +53,10 @@ TRAIN_REGISTRY = {
     "Hyperprior": train_hyperprior,
     "DCAL_YCbCr_Subsampled": train_dcal_ycbcr_subsampled,
     "DCAL_YCbCr_Base": train_dcal_ycbcr_base,
+    "DCAL_pool": DCAL_pool,
+    "DCAL_triple": DCAL_triple,
+    "DCAL_simple": DCAL_simple,
+    "DCAL_extended": DCAL_extended,
 }
 
 
