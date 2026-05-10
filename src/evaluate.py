@@ -80,7 +80,7 @@ class ImageComparisonMetrics:
 def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     print(f"\n--- Running evaluation for {evaluation_name} ---")
     datamodule.setup()
-    val_loader = datamodule.val_dataloader()
+    test_dataloader = datamodule.test_dataloader()
 
     device = next(model.parameters()).device
     # model.float()
@@ -109,7 +109,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         print("-" * 30, file=f)
 
         with torch.no_grad():
-            for i, batch in enumerate(val_loader):
+            for i, batch in enumerate(test_dataloader):
                 if i >= n_images:
                     break
 
@@ -194,21 +194,6 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
 
 def main():
     # We use batch_size=1 and no crop for high-level evaluation on full images
-    # datamodule_full = ClassImagesDataModule(
-    #     data_dir="datasets/DF2K/test",
-    #     batch_size=1,
-    #     random_crop=False,
-    #     ycbcr=False,  # Standardized to RGB for eval loader
-    # )
-
-    # datamodule_full = MinecraftDataModule(
-    #     train_dir="datasets/minecraft_screenshots/train",
-    #     test_dir="datasets/minecraft_screenshots/test",
-    #     batch_size=1,
-    #     ycbcr=False,
-    #     random_crop=False,
-    #     val_batch_size=1
-    # )
 
     datamodule_full = DF2KDataModule(
         train_dir="datasets/DF2K/train",
@@ -219,18 +204,13 @@ def main():
         val_batch_size=1
     )
 
-    models_minecraft = ["hyperprior_minecraft_001_best.pt",
-               "hyperprior_minecraft_005_best.pt",
-               "hyperprior_minecraft_01_best.pt",
-               "hyperprior_minecraft_0002_best.pt"]
+
+    models_combined = ["hyperprior_combined_001_best.pt",
+        "hyperprior_combined_005_best.pt",
+        "hyperprior_combined_01_best.pt",
+        "hyperprior_combined_0002_best.pt"]
     
-    models_hyperprior = ["hyperprior_df2k_001_best.pt",
-            "hyperprior_df2k_005_best.pt",
-            "hyperprior_df2k_01_best.pt",
-            "hyperprior_df2k_0002_best.pt"]
-    
-    # models = models_minecraft
-    models = models_minecraft + models_hyperprior
+    models = models_combined
 
     for model_name in models:
         try:

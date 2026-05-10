@@ -56,26 +56,32 @@ def get_jpeg_curve(file):
 
     return {"bpp": bpps, "psnr": psnrs, "mssim": mssims}
 
-def draw_curve(x, y, color, label):
+def draw_curve(ax, x, y, color, label):
     points = sorted(zip(x, y), key=lambda p: p[0])
     x_sorted, y_sorted = zip(*points)
-    plt.plot(x_sorted, y_sorted, marker='o', color=color, label=label)
+    ax.plot(x_sorted, y_sorted, marker='o', color=color, label=label)
 
 jpeg_curve = get_jpeg_curve(f"outputs/{minecraft_dirs[0]}/results.txt")
 minecraft_curve = get_curve(minecraft_dirs)
 df2k_curve = get_curve(df2k_dirs)
+combined_curve = get_curve(combined_dirs)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
 # TODO, change here if needed
-plt.title("RD Curve, hyperprior, on Minecraft dataset")
-plt.xlabel("BPP")
-plt.ylabel("PSNR")
+fig.suptitle("Rate-Distortion Curve, Minecraft Screenshots dataset")
 
-# TODO, change this if needed
-draw_curve(jpeg_curve['bpp'][:-2], jpeg_curve['psnr'][:-2], "gray", "jpeg")
+for ax, metric in [(ax1, 'psnr'), (ax2, 'mssim')]:
+    ax.set_xlabel("BPP")
+    ax.set_ylabel(metric.upper())
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    draw_curve(ax, jpeg_curve['bpp'][:-2], jpeg_curve[metric][:-2], "gray", "jpeg")
+    draw_curve(ax, minecraft_curve['bpp'], minecraft_curve[metric], "red", "minecraft")
+    draw_curve(ax, df2k_curve['bpp'], df2k_curve[metric], "blue", "df2k")
+    draw_curve(ax, combined_curve['bpp'], combined_curve[metric], "green", "combined")
+    ax.legend()
 
-draw_curve(minecraft_curve['bpp'], minecraft_curve['psnr'], "red", "minecraft")
-draw_curve(df2k_curve['bpp'], df2k_curve['psnr'], "blue", "df2k")
-
-plt.ylim(bottom=0, top=None)
-plt.legend()
+# TODO, change here if needed
+plt.savefig("rd_curve_minecraft.pdf", bbox_inches='tight')
+plt.tight_layout()
 plt.show()
