@@ -5,7 +5,11 @@ import torch
 import torch.nn.functional as F
 from torchvision import transforms
 import torchvision.transforms.functional as TF
-from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure, MultiScaleStructuralSimilarityIndexMeasure
+from torchmetrics.image import (
+    PeakSignalNoiseRatio,
+    StructuralSimilarityIndexMeasure,
+    MultiScaleStructuralSimilarityIndexMeasure,
+)
 from torchvision.utils import save_image
 import matplotlib
 
@@ -29,9 +33,9 @@ class ImageComparisonMetrics:
 
     def reset(self):
         self.psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
-        self.msssim_metric = MultiScaleStructuralSimilarityIndexMeasure(data_range=1.0).to(
-            self.device
-        )
+        self.msssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
+            data_range=1.0
+        ).to(self.device)
         self.total_mse = 0.0
         self.num_batches = 0
         self.finilized = False
@@ -201,16 +205,11 @@ def main():
         batch_size=1,
         ycbcr=False,
         random_crop=False,
-        val_batch_size=1
+        val_batch_size=1,
     )
 
 
-    models_combined = ["hyperprior_combined_001_best.pt",
-        "hyperprior_combined_005_best.pt",
-        "hyperprior_combined_01_best.pt",
-        "hyperprior_combined_0002_best.pt"]
-    
-    models = models_combined
+    models = ["DCAL_LAB_flops_best.pt"]
 
     for model_name in models:
         try:
@@ -218,6 +217,7 @@ def main():
             run_evaluation(model, datamodule_full, f"{model_name}_eval", n_images=30)
         except Exception as e:
             print(f"Error evaluating {model_name}: {e}")
+
 
 if __name__ == "__main__":
     main()

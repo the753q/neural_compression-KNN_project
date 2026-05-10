@@ -15,6 +15,16 @@ datamodule_default_imagenet10k = ClassImagesDataModule(
     patch_size=128,
 )
 
+datamodule_default_imagenet10k_LAB = ClassImagesDataModule(
+    data_dir="datasets/imagenet_10K/imagenet_subtrain",
+    batch_size=64,
+    num_workers=10,
+    random_crop=True,
+    ycbcr=False,
+    lab=True,
+    patch_size=128,
+)
+
 datamodule_df2k = DF2KDataModule(
     train_dir="datasets/DF2K/train",
     test_dir="datasets/DF2K/test",
@@ -23,7 +33,7 @@ datamodule_df2k = DF2KDataModule(
     random_crop=True,
     patch_size=256,
     val_patch_size=640,
-    val_batch_size=5
+    val_batch_size=5,
 )
 
 datamodule_minecraft_screenshots = MinecraftDataModule(
@@ -34,7 +44,7 @@ datamodule_minecraft_screenshots = MinecraftDataModule(
     random_crop=True,
     patch_size=256,
     val_patch_size=640,
-    val_batch_size=5
+    val_batch_size=5,
 )
 
 datamodule_combined = MinecraftDF2KDataModule(
@@ -148,6 +158,28 @@ def experiment55():
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_flops_best.pt")
 
+
+def experiment_lab():
+    EXPERIMENT_NAME = "dcal_lab_imagenet"
+    MODEL_NAME = "DCAL_LAB"
+    EPOCHS = 100  # Will be overridden by flops limit
+    LEARNING_RATE = 1e-4
+    TARGET_FLOPS = 3e15
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k_LAB,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+        target_flops=TARGET_FLOPS,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_flops_best.pt")
+
+
 def experiment5():
     """
     Train a basic DCAL 2018 on DF2K..
@@ -158,13 +190,12 @@ def experiment5():
     LEARNING_RATE = 1e-4
 
     train_fn = get_train_function(MODEL_NAME)
-    best_model = train_fn(
-        datamodule_df2k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE
-    )
+    best_model = train_fn(datamodule_df2k, EXPERIMENT_NAME, EPOCHS, LEARNING_RATE)
 
     # save model as torch object
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
 
 def general_experiment(data):
     assert "experiment_name" in data
@@ -180,28 +211,92 @@ def general_experiment(data):
 
     # save model as torch object
     os.makedirs("checkpoints/manual", exist_ok=True)
-    torch.save(best_model, f"checkpoints/manual/{data["experiment_name"]}_best.pt")
+    torch.save(best_model, f"checkpoints/manual/{data['experiment_name']}_best.pt")
+
 
 def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_, N, M):
     MODEL_NAME = "Hyperprior"
 
     train_fn = get_train_function(MODEL_NAME)
-    best_model = train_fn(
-        data_module, experiment_name, epochs, lr, lambda_, N, M
-    )
+    best_model = train_fn(data_module, experiment_name, epochs, lr, lambda_)
 
     # save model as torch object
     os.makedirs("checkpoints/manual", exist_ok=True)
     torch.save(best_model, f"checkpoints/manual/{experiment_name}_best.pt")
 
 
-def main():
-    experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 1, 1e-4, 0.002, 128, 192)
+def experiment_ycbcr_subsampled():
+    """
+    Train the DCAL YCbCr Subsampled model on ImageNet.
+    """
+    EXPERIMENT_NAME = "dcal_ycbcr_subsampled"
+    MODEL_NAME = "DCAL_YCbCr_Subsampled"
+    EPOCHS = 100
+    LEARNING_RATE = 1e-4
+    TARGET_FLOPS = 3e15
 
-    # experiment_hyperprior("hyperprior_combined_0002", datamodule_combined, 150, 1e-4, 0.002, 128, 192)
-    # experiment_hyperprior("hyperprior_combined_001", datamodule_combined, 150, 1e-4, 0.01, 128, 192)
-    # experiment_hyperprior("hyperprior_combined_005", datamodule_combined, 150, 1e-4, 0.05, 128, 192)
-    # experiment_hyperprior("hyperprior_combined_01", datamodule_combined, 150, 1e-4, 0.1, 128, 192)
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+        target_flops=TARGET_FLOPS,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
+
+def experiment_ycbcr_base():
+    """
+    Train the DCAL YCbCr Base model on ImageNet.
+    """
+    EXPERIMENT_NAME = "dcal_ycbcr_base"
+    MODEL_NAME = "DCAL_YCbCr_Base"
+    EPOCHS = 100
+    LEARNING_RATE = 1e-4
+    TARGET_FLOPS = 3e15
+
+    train_fn = get_train_function(MODEL_NAME)
+    best_model = train_fn(
+        datamodule_default_imagenet10k,
+        EXPERIMENT_NAME,
+        EPOCHS,
+        LEARNING_RATE,
+        target_flops=TARGET_FLOPS,
+    )
+
+    # save model as torch object
+    os.makedirs("checkpoints/manual", exist_ok=True)
+    torch.save(best_model, f"checkpoints/manual/{MODEL_NAME}_best.pt")
+
+
+def main():
+    experiment_ycbcr_subsampled()
+    experiment_ycbcr_base()
+    # general_experiment({
+    #     "experiment_name": "hyperprior_df2k",
+    #     "model_name": "Hyperprior",
+    #     "epochs": 20,
+    #     "lr": 1e-4,
+    #     "data_module": datamodule_minecraft_screenshots
+    # })
+    # experiment_hyperprior("hyperprior_df2k_001", datamodule_df2k, 100, 1e-4, 0.01)
+    # experiment_hyperprior("hyperprior_df2k_005", datamodule_df2k, 100, 1e-4, 0.05)
+    # experiment_hyperprior("hyperprior_df2k_01", datamodule_df2k, 100, 1e-4, 0.1)
+
+    # experiment_hyperprior(
+    #     "hyperprior_minecraft_001", datamodule_minecraft_screenshots, 100, 1e-4, 0.01
+    # )
+    # experiment_hyperprior(
+    #     "hyperprior_minecraft_005", datamodule_minecraft_screenshots, 100, 1e-4, 0.05
+    # )
+    # experiment_hyperprior(
+    #     "hyperprior_minecraft_01", datamodule_minecraft_screenshots, 100, 1e-4, 0.1
+    # )
+
 
 if __name__ == "__main__":
     main()

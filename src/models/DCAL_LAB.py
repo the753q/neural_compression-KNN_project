@@ -1,4 +1,4 @@
-# Deep Convolutional AutoEncoder-based Lossy Image Compression - Native Inference
+# Deep Convolutional AutoEncoder-based Lossy Image Compression 2018 - LAB modification
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +6,7 @@ import lightning.pytorch as pl
 import constriction
 import numpy as np
 import dahuffman
-from utils import rgb_to_ycbcr, ycbcr_to_rgb
+from utils import ImagePatcher, rgb_to_lab_norm, lab_norm_to_rgb
 from training_utils import universal_train_model
 
 
@@ -66,11 +66,11 @@ class Encoder(nn.Module):
         self.row3 = DownBranch(1)
 
     def forward(self, x):
-        y, cb, cr = torch.split(x, 1, dim=1)
+        l, a, b = torch.split(x, 1, dim=1)
 
-        out1 = self.row1(y)
-        out2 = self.row2(cb)
-        out3 = self.row3(cr)
+        out1 = self.row1(l)
+        out2 = self.row2(a)
+        out3 = self.row3(b)
 
         return out1, out2, out3
 
@@ -87,20 +87,20 @@ class Decoder(nn.Module):
             nn.Conv2d(96, 3, kernel_size=3, padding=1), nn.Sigmoid()
         )
 
-    def forward(self, x_y, x_cb, x_cr):
-        out1 = self.row1(x_y)
-        out2 = self.row2(x_cb)
-        out3 = self.row3(x_cr)
+    def forward(self, x_l, x_a, x_b):
+        out1 = self.row1(x_l)
+        out2 = self.row2(x_a)
+        out3 = self.row3(x_b)
 
         x_concat = torch.cat([out1, out2, out3], dim=1)
         return self.final_merge(x_concat)
 
 
-class DCAL_Native(pl.LightningModule):
+class DCAL_LAB(pl.LightningModule):
     def __init__(self, learning_rate=1e-3):
         super().__init__()
         self.save_hyperparameters()
-        self.name = "DCAL_Native"
+        self.name = "DCAL_LAB"
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.quantization_bits = 8  # lower -> more compression
@@ -191,14 +191,14 @@ class DCAL_Native(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x = batch
-        z_y, z_cb, z_cr = self.encoder(x)
+        z_l, z_a, z_b = self.encoder(x)
 
         # add uniform noise to simulate quantization
-        z = torch.cat([z_y, z_cb, z_cr], dim=1)
+        z = torch.cat([z_l, z_a, z_b], dim=1)
         noise = torch.zeros_like(z).uniform_(-(1.0 / 1024.0), 1.0 / 1024.0)
-        z_y, z_cb, z_cr = torch.split(z + noise, 32, dim=1)
+        z_l, z_a, z_b = torch.split(z + noise, 32, dim=1)
 
-        x_hat = self.decoder(z_y, z_cb, z_cr)
+        x_hat = self.decoder(z_l, z_a, z_b)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient * torch.mean(z**2)
 
@@ -207,10 +207,10 @@ class DCAL_Native(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        z_y, z_cb, z_cr = self.encoder(x)
-        z = torch.cat([z_y, z_cb, z_cr], dim=1)
+        z_l, z_a, z_b = self.encoder(x)
+        z = torch.cat([z_l, z_a, z_b], dim=1)
 
-        x_hat = self.decoder(z_y, z_cb, z_cr)
+        x_hat = self.decoder(z_l, z_a, z_b)
 
         loss = F.mse_loss(x_hat, x) + self.rate_coeffitient * torch.mean(z**2)
 
@@ -224,35 +224,35 @@ class DCAL_Native(pl.LightningModule):
         return x_hat
 
     def forward_just_cae(self, x):
-        z_Y, z_Cb, z_Cr = self.encoder(x)
-        x_hat = self.decoder(z_Y, z_Cb, z_Cr)
+        z_L, z_A, z_B = self.encoder(x)
+        x_hat = self.decoder(z_L, z_A, z_B)
         return x_hat
 
     def forward_get_latent(self, x):
-        z_Y, z_Cb, z_Cr = self.encoder(x)
+        z_L, z_A, z_B = self.encoder(x)
 
         # PCA rotation
-        z_rot_Y, U_Y = self.pca_rotation(z_Y)
-        z_rot_Cb, U_Cb = self.pca_rotation(z_Cb)
-        z_rot_Cr, U_Cr = self.pca_rotation(z_Cr)
+        z_rot_L, U_L = self.pca_rotation(z_L)
+        z_rot_A, U_A = self.pca_rotation(z_A)
+        z_rot_B, U_B = self.pca_rotation(z_B)
 
         # Truncation
-        z_rot_Y[:, -12:] = 0
-        z_rot_Cb[:, -26:] = 0
-        z_rot_Cr[:, -26:] = 0
+        z_rot_L[:, -12:] = 0
+        z_rot_A[:, -26:] = 0
+        z_rot_B[:, -26:] = 0
 
         # Quantization
-        z_quant_Y = self.quantizer(z_rot_Y)
-        z_quant_Cb = self.quantizer(z_rot_Cb)
-        z_quant_Cr = self.quantizer(z_rot_Cr)
+        z_quant_L = self.quantizer(z_rot_L)
+        z_quant_A = self.quantizer(z_rot_A)
+        z_quant_B = self.quantizer(z_rot_B)
 
-        U_quant_Y = self.quantizer(U_Y)
-        U_quant_Cb = self.quantizer(U_Cb)
-        U_quant_Cr = self.quantizer(U_Cr)
+        U_quant_L = self.quantizer(U_L)
+        U_quant_A = self.quantizer(U_A)
+        U_quant_B = self.quantizer(U_B)
 
         # Entropy coding
-        U_quant_join = torch.cat([U_quant_Y, U_quant_Cb, U_quant_Cr], dim=1)
-        z_quant_join = torch.cat([z_quant_Y, z_quant_Cb, z_quant_Cr], dim=1)
+        U_quant_join = torch.cat([U_quant_L, U_quant_A, U_quant_B], dim=1)
+        z_quant_join = torch.cat([z_quant_L, z_quant_A, z_quant_B], dim=1)
 
         payload = np.concatenate(
             [
@@ -275,19 +275,19 @@ class DCAL_Native(pl.LightningModule):
             # z_decompressed = torch.tensor(codec.decode(z_compressed), dtype=torch.int32).reshape(z_quant_join.shape).to(next(self.parameters()).device)
 
         # De-quantization
-        U_rec_Y = self.dequantizer(U_quant_Y)
-        U_rec_Cb = self.dequantizer(U_quant_Cb)
-        U_rec_Cr = self.dequantizer(U_quant_Cr)
+        U_rec_L = self.dequantizer(U_quant_L)
+        U_rec_A = self.dequantizer(U_quant_A)
+        U_rec_B = self.dequantizer(U_quant_B)
 
-        z_rec_Y = self.dequantizer(z_quant_Y)
-        z_rec_Cb = self.dequantizer(z_quant_Cb)
-        z_rec_Cr = self.dequantizer(z_quant_Cr)
+        z_rec_L = self.dequantizer(z_quant_L)
+        z_rec_A = self.dequantizer(z_quant_A)
+        z_rec_B = self.dequantizer(z_quant_B)
         # PCA inverse rotation
-        z_inv_pca_Y = self.pca_inverse(z_rec_Y, U_rec_Y)
-        z_inv_pca_Cb = self.pca_inverse(z_rec_Cb, U_rec_Cb)
-        z_inv_pca_Cr = self.pca_inverse(z_rec_Cr, U_rec_Cr)
+        z_inv_pca_L = self.pca_inverse(z_rec_L, U_rec_L)
+        z_inv_pca_A = self.pca_inverse(z_rec_A, U_rec_A)
+        z_inv_pca_B = self.pca_inverse(z_rec_B, U_rec_B)
 
-        x_hat = self.decoder(z_inv_pca_Y, z_inv_pca_Cb, z_inv_pca_Cr)
+        x_hat = self.decoder(z_inv_pca_L, z_inv_pca_A, z_inv_pca_B)
 
         return (x_hat, compressed_payload)
 
@@ -300,11 +300,11 @@ class DCAL_Native(pl.LightningModule):
         device = next(self.parameters()).device
         x = x.to(device)
 
-        # Convert to YCbCr for processing
-        x_ycbcr = rgb_to_ycbcr(x)
+        # Convert to LAB for processing if input is RGB
+        x_lab = rgb_to_lab_norm(x)
 
         # Get original dimensions
-        c, h, w = x_ycbcr.shape
+        c, h, w = x_lab.shape
 
         # Calculate padding to make dimensions multiples of 8 (due to 3 downsampling stages)
         pad_h = (8 - (h % 8)) % 8
@@ -312,7 +312,7 @@ class DCAL_Native(pl.LightningModule):
 
         # Apply reflection padding (right and bottom)
         # F.pad expects (left, right, top, bottom) for 4D input
-        x_padded = F.pad(x_ycbcr.unsqueeze(0), (0, pad_w, 0, pad_h), mode="reflect")
+        x_padded = F.pad(x_lab.unsqueeze(0), (0, pad_w, 0, pad_h), mode="reflect")
 
         with torch.no_grad():
             # Process entire image natively
@@ -324,8 +324,8 @@ class DCAL_Native(pl.LightningModule):
         recon_cae = recon_cae_padded[:, :, :h, :w].squeeze(0)
 
         # Convert back to RGB for final output
-        full_reconstruction = ycbcr_to_rgb(recon)
-        full_reconstruction_cae = ycbcr_to_rgb(recon_cae)
+        full_reconstruction = lab_norm_to_rgb(recon)
+        full_reconstruction_cae = lab_norm_to_rgb(recon_cae)
 
         # Ensure compressed payload is in bytes for consistent size calculation
         if isinstance(compressed, np.ndarray):
@@ -344,7 +344,7 @@ class DCAL_Native(pl.LightningModule):
 
 def train_model(datamodule, experiment_name, epochs, learning_rate, target_flops=None):
     return universal_train_model(
-        DCAL_Native,
+        DCAL_LAB,
         datamodule,
         experiment_name,
         epochs,

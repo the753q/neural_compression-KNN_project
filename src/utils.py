@@ -82,3 +82,45 @@ def ycbcr_to_rgb(tensor):
     if tensor.dim() == 3:
         return kornia.color.ycbcr_to_rgb(tensor.unsqueeze(0)).squeeze(0)
     return kornia.color.ycbcr_to_rgb(tensor)
+
+def rgb_to_lab(tensor):
+    """
+    Converts an RGB tensor to LAB using Kornia.
+    Handles both (C, H, W) and (B, C, H, W).
+    """
+    if tensor.dim() == 3:
+        return kornia.color.rgb_to_lab(tensor.unsqueeze(0)).squeeze(0)
+    return kornia.color.rgb_to_lab(tensor)
+
+def lab_to_rgb(tensor):
+    """
+    Converts a LAB tensor to RGB using Kornia.
+    Handles both (C, H, W) and (B, C, H, W).
+    """
+    if tensor.dim() == 3:
+        return kornia.color.lab_to_rgb(tensor.unsqueeze(0)).squeeze(0)
+    return kornia.color.lab_to_rgb(tensor)
+
+def rgb_to_lab_norm(tensor):
+    """
+    Converts RGB [0, 1] to LAB [0, 1] normalized.
+    L: [0, 100] -> [0, 1]
+    a, b: [-128, 127] -> [0, 1]
+    """
+    lab = rgb_to_lab(tensor)
+    l, a, b = torch.split(lab, 1, dim=-3)
+    l = l / 100.0
+    a = (a + 128.0) / 255.0
+    b = (b + 128.0) / 255.0
+    return torch.cat([l, a, b], dim=-3)
+
+def lab_norm_to_rgb(tensor):
+    """
+    Converts LAB [0, 1] normalized to RGB [0, 1].
+    """
+    l, a, b = torch.split(tensor, 1, dim=-3)
+    l = l * 100.0
+    a = a * 255.0 - 128.0
+    b = b * 255.0 - 128.0
+    lab = torch.cat([l, a, b], dim=-3)
+    return lab_to_rgb(lab)
