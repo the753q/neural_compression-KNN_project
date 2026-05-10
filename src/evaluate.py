@@ -84,9 +84,10 @@ class ImageComparisonMetrics:
 def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
     print(f"\n--- Running evaluation for {evaluation_name} ---")
     datamodule.setup()
-    val_loader = datamodule.val_dataloader()
+    test_dataloader = datamodule.test_dataloader()
 
     device = next(model.parameters()).device
+    # model.float()
     model.eval()
 
     metrics_ours = ImageComparisonMetrics("original", "ours", device=device)
@@ -112,7 +113,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
         print("-" * 30, file=f)
 
         with torch.no_grad():
-            for i, batch in enumerate(val_loader):
+            for i, batch in enumerate(test_dataloader):
                 if i >= n_images:
                     break
 
@@ -146,7 +147,7 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 # Log per-image results to file
                 print(
                     f"Image {i}: {original_tensor.shape[2]}x{original_tensor.shape[1]} | {bpp:.3f} bpp",
-                    file=f,
+                    file=f, flush=True
                 )
 
                 if i < n_save:
@@ -162,15 +163,20 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                     comparison = torch.cat(to_stack, dim=2)
                     save_image(comparison, save_path)
 
+
+
         # Final summaries to file
         if metrics_cae.num_batches > 0:
-            metrics_cae.print_summary(file=f)
+            metrics_cae.print_summary(file=f, flush=True)
 
         metrics_ours.print_summary(file=f)
+
+     
 
         # Calculate final averages
         metrics_ours.finilize()
         avg_bpp_ours = sum(model_bpps) / len(model_bpps)
+
 
         print("\n[RD_DATA]", file=f)
         print(f"model_bpp: {avg_bpp_ours:.6f}", file=f)
@@ -186,28 +192,25 @@ def run_evaluation(model, datamodule, evaluation_name, n_images=30, n_save=5):
                 file=f,
             )
 
+
     print(f"Evaluation complete. Results saved to {experiment_dir}")
 
 
 def main():
     # We use batch_size=1 and no crop for high-level evaluation on full images
-    # datamodule_full = ClassImagesDataModule(
-    #     data_dir="datasets/DF2K/test",
-    #     batch_size=1,
-    #     random_crop=False,
-    #     ycbcr=False,  # Standardized to RGB for eval loader
-    # )
 
-    datamodule_full = MinecraftDataModule(
-        train_dir="datasets/minecraft_screenshots/train",
-        test_dir="datasets/minecraft_screenshots/test",
+    datamodule_full = DF2KDataModule(
+        train_dir="datasets/DF2K/train",
+        test_dir="datasets/DF2K/test",
         batch_size=1,
         ycbcr=False,
         random_crop=False,
         val_batch_size=1,
     )
 
+
     models = ["DCAL_LAB_flops_best.pt"]
+
     for model_name in models:
         try:
             model = torch.load(f"checkpoints/manual/{model_name}", weights_only=False)

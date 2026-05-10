@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import CSVLogger
 import numpy as np
 import os
@@ -21,14 +21,11 @@ class AbsConv(nn.Sequential):
         return super().forward(x.abs())
 
 class Hyperprior(pl.LightningModule):
-    def __init__(self, lambda_=0.01, learning_rate=1e-4):
+    def __init__(self, lambda_=0.01, learning_rate=1e-4, N = 64, M = 96):
         super().__init__()
         self.save_hyperparameters()
         self.name = "Hyperprior"
         self.lambda_ = lambda_
-
-        N = 64
-        M = 96
 
         # Analysis transform (Encoder)
         self.g_a = nn.Sequential( 
@@ -162,12 +159,18 @@ class Hyperprior(pl.LightningModule):
         z = self.h_a(y)
         
         # compress prior info
+     
         z_strings, z_size = self.entropy_bottleneck.compress(z), z.shape[2:]
+
         z_hat = self.entropy_bottleneck.decompress(z_strings, z.shape[2:])
         sigma = self.h_s(z_hat)
         # compress latent
-        y_strings = self.gaussian_conditional.compress(y, sigma)
 
+
+        # sigma = sigma.clamp(min = 1e-6, max=40)
+        # TODO can cause segfault if sigma too big or too small
+        y_strings = self.gaussian_conditional.compress(y, sigma)
+ 
         # payload = pickle.dumps({
         #     "z_strings": z_strings,
         #     "z_size": z_size,
@@ -176,7 +179,7 @@ class Hyperprior(pl.LightningModule):
 
         # pack, big endian, u16x2 z dimensions, u32 len(z_strings), z_strings, y_strings
         payload = struct.pack(">HHI", z_size[0], z_size[1], len(z_strings[0])) + z_strings[0] + y_strings[0]
-
+        
         return payload
     
     def decompress(self, payload):
@@ -191,6 +194,8 @@ class Hyperprior(pl.LightningModule):
         }
 
         # decompress prior info
+
+        # TODO can cause segfault if sigma too big or too small
         z_hat = self.entropy_bottleneck.decompress(data["z_strings"], data["z_size"])
 
         sigma = self.h_s(z_hat)
@@ -203,11 +208,13 @@ class Hyperprior(pl.LightningModule):
 
         return x_hat
 
+
     def evaluate_image(self, x):
         """Standardized evaluation method. Processes full image at once."""
         # Build tables needed for encoding
         self.entropy_bottleneck.update()
-        scale_table = torch.exp(torch.linspace(math.log(0.11), math.log(256), 64))
+        # TODO if this is wronly set, can cause seg fault in gaussian_conditional, 64 cols specifically
+        scale_table = torch.exp(torch.linspace(math.log(0.01), math.log(128), 256))
         self.gaussian_conditional.update_scale_table(scale_table)
         self.gaussian_conditional.update()
 
@@ -227,6 +234,7 @@ class Hyperprior(pl.LightningModule):
         else:
             x_padded = x
 
+
         with torch.no_grad():
             # Process entire image
             payload = self.compress(x_padded.unsqueeze(0))
@@ -239,8 +247,8 @@ class Hyperprior(pl.LightningModule):
         return {"reconstruction": full_reconstruction, "compressed_payload": payload}
 
 
-def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_):
-    model = Hyperprior(learning_rate=learning_rate, lambda_=lambda_)
+def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_, N=64, M=96):
+    model = Hyperprior(learning_rate=learning_rate, lambda_=lambda_, N = N, M=M)
 
     checkpoint_filename = f"{experiment_name}-{model.name}-best"
 
@@ -252,13 +260,20 @@ def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_):
         mode="min",
     )
 
+    early_stop_callback = EarlyStopping(
+        monitor="val_loss",
+        patience=30,
+        mode="min"
+    )
+
     csv_logger = CSVLogger("logs/", name=experiment_name)
 
     trainer = pl.Trainer(
         max_epochs=epochs,
         accelerator="auto",
-        precision="bf16-mixed",
-        callbacks=[checkpoint_callback],
+        #precision="bf16-mixed",
+        precision="32-true",
+        callbacks=[checkpoint_callback, early_stop_callback],
         logger=csv_logger,
     )
 

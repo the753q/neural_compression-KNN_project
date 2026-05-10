@@ -1,6 +1,6 @@
 import os
 import torch
-from data import ClassImagesDataModule, DF2KDataModule, MinecraftDataModule
+from data import ClassImagesDataModule, DF2KDataModule, MinecraftDataModule, MinecraftDF2KDataModule
 from models import get_train_function
 
 
@@ -45,6 +45,17 @@ datamodule_minecraft_screenshots = MinecraftDataModule(
     patch_size=256,
     val_patch_size=640,
     val_batch_size=5,
+)
+
+datamodule_combined = MinecraftDF2KDataModule(
+    train_dirs=["datasets/minecraft_screenshots/train","datasets/DF2K/train"],
+    test_dirs=["datasets/minecraft_screenshots/test", "datasets/DF2K/test"],
+    batch_size=8,
+    ycbcr=False,
+    random_crop=True,
+    patch_size=256,
+    val_patch_size=960,
+    val_batch_size=4
 )
 
 
@@ -203,7 +214,7 @@ def general_experiment(data):
     torch.save(best_model, f"checkpoints/manual/{data['experiment_name']}_best.pt")
 
 
-def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_):
+def experiment_hyperprior(experiment_name, data_module, epochs, lr, lambda_, N, M):
     MODEL_NAME = "Hyperprior"
 
     train_fn = get_train_function(MODEL_NAME)
