@@ -45,17 +45,15 @@ As the availability of processing power rises, so does the volume and resolution
 
 Traditional image compression methods, like JPEG, rely on the hand-crafted encoder/decoder block \cite{cheng_deep_2018}. These methods, while possibly not optimal, were also designed to work within the low processing power of older devices.
 
-With the advent of deep learning, new methods of compression have appeared. Instead of having to design the codec using concrete rules, whether programmatically or by hand, a neural network can learn these rules. Without being constrained, the right model architecture can subsequently provide a more efficient representation of an image in the outputted bottleneck features. 
+With the advent of deep learning, new methods of compression have appeared. Instead of having to design the codec using concrete rules, either programmatically or by hand, a neural network can learn these rules. Without being constrained, the appropriate model architecture can subsequently provide a more efficient representation of an image in the output bottleneck features. 
 
-It's important to note, however, that the stronger the compression we require, the bigger the model must be if we want to preserve a high quality representation. The model's weights must also be available on the device that aims to perform the operation. Model inference also requires more power than rule-based methods do.
+It's important to note, however, that the stronger the compression we require, the larger the model must be if we want to preserve a high quality representation. The model's weights must also be available on the device that aims to perform the operation. Model inference also requires more power than rule-based methods do.
 
 When it comes to general autoencoder models, the encoding part produces the bottleneck features representing a compressed image, but to decompress, the same neural network operations generally cannot be reversed. As such, the model is built with a second decoder block. During training, the encoder and decoder parts are then evaluated and updated together.
 
 
 \section{Related Work}
 In this section, we review prior research in the field of learned image compression. We summarize existing approaches and key trends in the field, highlighting their underlying assumptions and reported performance characteristics.
-
-\subsection{Convolutional Autoencoder Compression}
 
 Researchers \cite{cheng_deep_2018} built a symmetric convolutional autoencoder structure with multiple downsampling and upsampling units to generate feature maps with low dimensions. The encoder part was a pipeline transforming the source RGB image to YCbCr format and normalizing it to the range $[0,1]$. The image then went into the CAE network block, which encapsulated both the encoder and decoder pipelines. The CAE itself comprised 3 downsampling units in the first part, each consisting of 2 convolutional layers. Each convolution was followed by a PReLU activation. During training, uniform noise was added to the latent vector, imitating the effect of the quantizer present at inference time, which was not differentiable and thus could not be used directly during training. An approximated rate-distortion was used as the loss function:
 \begin{equation}
@@ -71,6 +69,18 @@ acting as a proxy for the bitrate. The scalar $\lambda$ controlled the rate-dist
 tradeoff. The model was optimized using Adam with a fixed learning rate of $10^{-4}$. The output of the pre-trained CAE utilized a PCA rotation to produce more zeros, improving efficiency. Subsequently, 12-bit quantization and the entropy coder were used to compress the data further. The model itself always expected a 128x128x1 tensor as input and outputted a 16x16x32 feature map. To achieve compression on larger image sizes, they sliced the images into patches and ran the CAE independently on each slice. Their results outperformed conventional image coding algorithms and achieved a 13.7\% BD-rate saving compared to JPEG2000 on the Kodak dataset. Their average running time, however, was 80 ms longer on GPU and 1700 ms longer on CPU than with JPEG2000. 
 
 
+The work \cite{balle_end--end_2017} introduced a framework that jointly optimizes all components (encoder, quantizer, and decoder) end-to-end. The method consists of a nonlinear analysis transformation, a uniform quantizer, and a nonlinear synthesis transformation, where the transforms are built from successive stages of convolutional linear filters and nonlinear activation functions. Rather than using ReLU or similar activations, the authors employ a form of local gain control inspired by biological neural models, which better respects the statistical structure of natural images. The non-differentiability of quantization normally prevents back-propagation. The authors introduce additive uniform noise as a proxy for rounding, which allows the full pipeline to be trained via SGD. An input image $x$ is mapped to a latent code space via a parametric analysis transform $y = ga(x; \phi)$, which is then quantized to a discrete vector $q$. The rate $R$ is lower-bounded by the entropy of the quantized representation, and reconstruction proceeds via a synthesis transform applied to the dequantized latent. The model is trained to minimize a Lagrangian combination of rate and distortion ($R + \lambda D$), where distortion is measured in either MSE or a perceptual metric (MS-SSIM). At inference, the latent code is entropy-coded using the learned probability model. The use of purely convolutional transforms allows the architecture to work with images of arbitrary sizes. Overall, the work achieved consistently better PSNR at the same bitrate across most test images and bitrates compared to JPEG. Visually, the models produced far fewer blocking artifacts.
+
+
+The paper \cite{townsend_hilloc_2019} similarly proposes a fully convolutional VAE architecture, allowing for the compression of full-resolution images while focusing on lossless compression. The authors observe that the model trained only on 32x32 ImageNet images generalized, without any retraining, to much larger images, including full-size photographs. They also implement a dynamic discretization, adapting latent quantization per image without calibrating a fixed grid per hierarchical layer. The architecture achieves SOTA lossless compression on full-size ImageNet at roughly 3,05 bits/dim, outperforming PNG (about 4,0) and WebP (about 3,6) among others.
+
+
+Building on the end-to-end VAE \cite{balle_end--end_2017}, whose fully factorized prior treats every latent element as statistically independent, researchers \cite{balle_variational_2018} introduce a scale hyperprior. Its goal is to exploit the strong correlations present in natural image representations. The core idea is to augment the base autoencoder with a second, shallower encoder-decoder pair (the hyper-encoder and hyper-decoder), which operates on the (pre-quantization) latents to produce a set of hyper-latents. These hyper-latents are quantized, compressed with a fully factorized entropy model, and appended to the main bitstream as side information; the hyper-decoder then reconstructs from a spatially varying set of scale parameters, one for each latent element. The entropy coder can assign shorter codes to textured regions and longer codes to smooth ones, thereby reducing the average coding rate without increasing distortion. The entire system (base autoencoder, hyper-encoder, and hyper-decoder) is trained jointly end-to-end. Gradient flow through the quantization operation is handled via additive uniform noise relaxation during training. Evaluated on the Kodak image set, the proposed model improves on PSNR and MS-SSIM metrics and achieves SOTA MS-SSIM at the time of publication, including traditional codecs. On PSNR, it substantially outperforms JPEG.
+
+
+The paper \cite{prativadibhayankaram_study_2024} investigates how the choice of input color space affects the performance of learned compression. They employ a two-branch AE where one processes the luminance and the second handles the chrominance channels. For the RGB variant, all three channels are fed into a single branch. Each color-space variant is trained independently at several bitrates using a rate-distortion loss. The study builds on the fact that human vision is more sensitive to changes in brightness (representing structure) than to changes in color, and so the models prioritizing brightness could achieve better compression. This can be achieved by using color spaces like YCbCr or LAB, which have a separate component for luminance. The model could then still process in full resolution, but with the chroma channels subsampled. In terms of MS-SSIM, the YUV variant outperformed the LAB variant by a BD-BR gain of $7.5\%$ over their base model, while LAB lagged behind. On the other hand, when color fidelity is assessed with the CIEDE2000 color metric, LAB yields a BD-BR gain of $8\%$ over base, surpassing the YUV model (an expected result given that LAB is constructed to more closely represent human color perception). However, the RGB variant, which uses no explicit separation, achieved the best performance overall (BD-BR gain of 13.14\% in MS-SSIM and 17.96\% in CIEDE2000), suggesting that luminance-chrominance separation may be unnecessary when model capacity is sufficient.
+
+
 \section{Evaluation}
 We describe the datasets used for training our compression models and the ways in which we evaluate them.
 
@@ -83,13 +93,11 @@ ImageNet is an image dataset organized according to concepts constructed from th
 For basic experiments, we use a subset of the dataset. The ImageNet 10k dataset contains 10 randomly selected images from each of the 1000 classes of the original \cite{noauthor_imagenet_nodate}. 
 
 \paragraph{Div2K High Resolution Images}
-The Div2K is a large dataset with a diverse range of contents. It is split into various categories of image quality, of which we only use the high resolution subset (of around 2k resolution) \cite{noauthor_div2k_nodate}. 
+The Div2K is a large dataset with a diverse range of contents. It is split into various categories of image quality, of which we only use the high resolution subset (of around 2k resolution), which consists of 3550 images. We reserve 100 randomly selected images for testing. \cite{noauthor_div2k_nodate}. 
 
-\paragraph{Flickr2K}
-2650 high-quality images from Flickr, commonly used for super-resolution training. We use it combined with Div2K; the combination is sometimes called DF2K \cite{noauthor_flickr2k_nodate}. 
+\paragraph{Minecraft Screenshots Dataset}
+Screenshots of Minecraft gameplay consist of 6205 PNG images, 1920$\times$1080 resolution. We reserve 100 randomly selected images for testing. \cite{noauthor_minecraft_nodate}. 
 
-\paragraph{Flickr-Faces-HQ small}
-The Flickr Faces dataset contains high-quality images of human faces. It offers 70,000 PNG images at 1024×1024 resolution that display diverse ages, ethnicities, image backgrounds, and accessories like hats and eyeglasses \cite{noauthor_flickr-faces-hq_nodate}.
 
 \subsection{Metrics}
 We evaluate the models based on various metrics, such as compression strength, reconstruction quality, and compute cost.
@@ -136,26 +144,36 @@ $C_1 = (K_1 L)^2$ and $C_2 = (K_2 L)^2$ are stability constants,
 $L$ is the dynamic range of pixel values (for 8-bit images, 255), 
 and $K_1$, $K_2$ are small constants (typically $K_1=0.01$ and $K_2=0.03$) \cite{ungureanu_image-compression_2024}.
 
+Multi-scale SSIM (MS-SSIM) extends this by computing SSIM across $M$ downsampled 
+versions of the image, weighting each scale:
+\begin{equation}
+\mathrm{MS\text{-}SSIM}(x,y) = \left[\sigma_{xy,M}\right]^{\alpha_M}
+\prod_{j=1}^{M} \left[\mathrm{cs}_j(x,y)\right]^{\beta_j}
+\end{equation}
+where $\mathrm{cs}_j$ is the contrast-structure term at scale $j$ and 
+$\alpha_M$, $\beta_j$ are empirically determined weights. This better captures perceptual quality across varying viewing distances and 
+image resolutions.
+
 \section{Experiments}
-This section explains the structure of our work and the experiments conducted to evaluate its compression strength.
+This section explains the structure of our work and the experiments conducted to evaluate the influence of modifications on the compression process.
 
 \subsection{Workflow and Implementation Details}
 For ease of use, we propose a harness that allows for seamless swapping of different compression architectures. The harness provides standardized dataset loading and preprocessing while also providing evaluation capabilities.
 
-First, the $data.py$ file defines the various datasets we use, each as its own subclass of the PyTorch Lightning \cite{noauthor_pytorch_nodate} library $LightningDataModule$, achieving seamless integration within the main training code. Batch size and the number of workers for batch preparation are defined for each module. Additionally, we set whether we want the images to be scaled to a fixed size or cut into patches. By splitting each image into sub-parts, we allow the model to learn from more examples and prevent overfitting. Multiple datasets can be concatenated as well. Inside the class, we also define the separate train, test, and validation sets. 
+First, the $data.py$ file defines the various datasets we use, each as its own subclass of the PyTorch Lightning \cite{noauthor_pytorch_nodate} library $LightningDataModule$, achieving seamless integration within the main training code. The batch size of the training and validation data, as well as the number of workers for batch preparation, is defined for each module. Additionally, we set whether we want the images to be scaled to a fixed size or cut into patches. By splitting each image into sub-parts, we allow the model to learn from more examples and prevent overfitting. Multiple datasets can also be concatenated. Inside the class, we also define the separate train, test, and validation sets. Conversion to YCbCr or LAB color spaces can also be set.
 
 The $train.py$ file describes the main training pipeline, which contains experiments that combine datasets with models. PyTorch Lightning then takes care of the training process.
 
-Models are built on top of a base autoencoder module in the $base.py$ file, implementing training and validation steps, all built on top of $LightningModule$. The concrete model architecture is then implemented in its own $.py$ file, inheriting the $BaseAutoencoder$ class and usually implementing the encoder, decoder, and forward pass components of the model.
+Each model is contained in its own file, implementing training and validation steps, an encoder, a decoder, and the forward pass, all built on top of $LightningModule$. The files also contain the custom train and evaluate functions, which can then be invoked from the train and evaluate scripts.
 
 Evaluation is then performed via the $evaluate.py$ file, which loads dataset modules, compression metrics, and performs the compression and decompression of images with a specified trained model. 
-Each image is sliced into parts, with each part compressed individually. After subsequent decompression, the slices are merged together to reconstruct the original image. The slicing algorithm creates non-overlapping slices that, during compression, leave the model without the context of the surrounding area.
 
 Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated. We also compare our method to JPEG compression in terms of image quality and compression rate.
 
-\subsection{Current State}
+\subsection{Base Model}
 
-We have currently implemented the architecture from \cite{cheng_deep_2018} as closely as possible based on the description in the paper, with some temporary simplifications. In short, we work with normalized YCbCr images and process each channel separately, so a 128×128×1 patch is the input to the encoder. We perform PCA rotations, then apply a simple quantization formula as mentioned in the paper. We quantize the 3 latent vectors, one per channel in YCbCr, as well as 3 rotation matrices from PCA. This quantized data are then encoded using Huffman coding. The entropy method is temporary and may be replaced later; currently, we are focusing on producing low-entropy latents after the PCA rotation.
+We have implemented a model heavily inspired by the architecture from \cite{cheng_deep_2018}. We work with normalized YCbCr images and process each channel separately, so a 128×128×1 patch is the input to the encoder. We perform PCA rotations, then apply a simple quantization formula as mentioned in the paper. We quantize the 3 latent vectors, one per channel in YCbCr, as well as 3 rotation matrices from PCA. This quantized data is then encoded using Huffman coding. The model's focus is on producing low-entropy latents after the PCA rotation.
+Each image is sliced into parts, with each part compressed individually. After subsequent decompression, the slices are merged together to reconstruct the original image. The slicing algorithm creates non-overlapping slices that, during compression, leave the model without the context of the surrounding area.
 
 Current PCA, quantization pipeline \cite{cheng_deep_2018}:
 
@@ -167,19 +185,12 @@ Current PCA, quantization pipeline \cite{cheng_deep_2018}:
 \end{enumerate}
 Here $y$ is the latent vector, encoder output; $\hat{y}$ is the recovered latent that will go into the decoder network; $U$ is the PCA matrix produced from the image feature maps; and $B$ is the desired number of bits.
 
-We plan to conduct more experiments with this model, including:
-\begin{enumerate}
-    \item Train on the DF2K dataset with many more epochs.
-    \item Train with different distortion losses: MAE, Huber.
-    \item Train with different rate loss: $-\sum{x \cdot log_2{(x)}}$.
-\end{enumerate}
-
 
 \section{Results}
 This section provides the results of the tests performed on the described experiments, as measured by metrics relevant to learned image compression.
 
 \subsection{Base Model}
-In this paper, we describe our attempt at reimplementing the existing work of a CAE-based architecture \cite{cheng_deep_2018}. Now, we report the achieved results.
+The base model inspired by \cite{cheng_deep_2018} was modified across various experiments, and its performance was measured. Here, we report the achieved results.
 
 \paragraph{Patch-Level Evaluation}
 To understand the intrinsic reconstruction capabilities of our architecture and the degradation introduced by the compression of the bottleneck vector step, we first evaluated the model on $128 \times 128$ image patches. This evaluation was performed over a validation set of 50 batches. 
@@ -247,8 +258,6 @@ img\_4 & $500 \times 375$ & 3.69 & 412 $\rightarrow$ 84 & 4.89x & 3.48x & 22.21 
 \end{tabular}
 \end{table*}
 
-
-\subsection{Discussion}
 Our evaluation demonstrates that the proposed implementation achieves distinctive file size reductions. On average, the compression factor ranges from 2.9x to 4.9x. For several images, our model achieves a higher compression ratio than the JPEG baseline at a quality level of 95. 
 
 However, the implemented architecture fails when compared to the JPEG baseline, which currently outperforms our approach in terms of standard distortion metrics (PSNR and SSIM). The average PSNR for our model across the dataset is 25.18 dB, compared to 38.57 dB for JPEG. 
@@ -258,15 +267,17 @@ However, the implemented architecture fails when compared to the JPEG baseline, 
 
 
 
-\subsection{Base Model Modifications}
-Based on the research work \cite{cheng_deep_2018}, which we took as inspiration for our base model, we performed and evaluated various modifications to the model architecture.
-Each model change was trained for a constant number of FLOPS $3 \times 10^{15}$ and compared with JPEG on a Rate Distortion Curve. PSNR and SSIM scores are calculated and compared to BPP. JPEG compression statistics are calculated for quality settings of 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, and 100. Results of JPEG scoring are interpolated to allow for comparison with our models at similar BPP scores. 
+\subsection{EXP1: Base Model Modifications}
+In this part, we present experiments targeted at finding patterns between compression model variants, allowing us to understand how certain changes influence the models.
 
-We switched the base implementation's usage of patches during implementation to a simple padding pipeline, allowing us to input full-resolution images, as showcased in figure \ref{fig:OG_base_Native}. The pipeline padded the image to ensure its dimensions were multiples of 8 for the downsampling stages, with the extra area being cropped out to obtain the final reconstructed image. We note the sudden change in BPP scores between the $Full Resolution$ and $Base - w/ Patches$ approaches. 
+Based on the research work \cite{cheng_deep_2018}, which we took as inspiration for our base model, we constructed and evaluated various modifications to the model architecture.
+Each model variant was trained for a constant number of FLOPS $3 \times 10^{15}$ and compared with JPEG on a Rate Distortion Curve. PSNR and SSIM scores are calculated and compared to BPP. JPEG compression statistics are calculated for quality settings of 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, and 100. Results of JPEG scoring are interpolated to allow for comparison with our models at similar BPP scores. All models are trained and evaluated on the ImageNet 10k dataset \cite{noauthor_imagenet_nodate}.
 
-Additionally, we switched the YCbCr color space to LAB, which had a slight negative effect on the SSIM score. It also seems to affect the SSIM of patched and non-patched models in different ways, as shown in the figure \ref{fig:rd_ssim_LAB}. Notable is also the negative effect of LAB on the patched model, which to the subjective eye looks closer to original than the YCbCr, as LAB seemingly allowed the model to preserve the colors better. Example can be seen in the figure \ref{fig:top_YCbCr_bot_LAB}. 
+We switched the base implementation's use of patches during implementation to a simple padding pipeline, allowing us to input full-resolution images, as showcased in figure \ref{fig:OG_base_Native}. The pipeline padded the image to ensure its dimensions were multiples of 8 for the downsampling stages, with the extra area being cropped out to obtain the final reconstructed image. We note the sudden change in BPP scores between the $Full Resolution$ and $Base - w/ Patches$ approaches in figure \ref{fig:rd_ssim_LAB}. 
 
+Additionally, we switched the YCbCr color space to LAB, which had a slight negative effect on the SSIM score. It also seems to affect the SSIM of patched and non-patched models in different ways, as shown in the figure \ref{fig:rd_ssim_LAB}. Notably, the negative effect of LAB on the patched model is also significant, where an example image appears to the subjective eye to be closer to the original than the one compressed via the YCbCr model. We suppose that LAB allowed the model to preserve colors better. An example can be seen in the figure \ref{fig:top_YCbCr_bot_LAB}. 
 
+The YCbCr splits the image color data into the main luminance channel, providing the underlying grayscale image structure, while colors are represented via the blue and red chrominance channels. Thanks to the clear separation of the luminance channel, we can prioritize it over the color channels, ensuring that structure preservation has the utmost priority. We use the $Full Resolution$ modification reported before, allowing us to compress an entire image at once, and to compare how the addition of subsampling influences the compression statistics. Subsampling is done in a 2:1 and 8:1 ratio, where the luminance (Y) is maintained at full resolution, while the chrominance (Cb, Cr) channels are reduced to half resolution before encoding, for example. As can be seen in figure \ref{fig:rd_ms-ssim_YCbCr_subsampling}, the 2:1 subsampled implementation achieved a reduced BPP score while degrading the quality by only a small margin. Regarding subjective comparison, we can see that the 2:1 subsampling seems to have helped, as the model preserved the structure better, while any possible color degradation was not noticeable. On the contrary, the 8:1 compression doesn't leave enough space for color data, leaving the compressed images with color artifacts, visible in figure \ref{fig:subsampling_1:2_2:1_8:1}.
 
 \begin{figure*}[p]
   \centering
@@ -290,36 +301,71 @@ Additionally, we switched the YCbCr color space to LAB, which had a slight negat
 \end{figure*}
 
 
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/tomas/rd_ms-ssim_YCbCr_subsampling.png}
+  \caption{EXP1: RD curve of YCbCr subsampling.}
+  \label{fig:rd_ms-ssim_YCbCr_subsampling}
+\end{figure*}
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/tomas/1:2_2:1_8:1.png}
+  \caption{EXP1: YCbCr subsampling comparison. Top 1:2 (native), middle 2:1, bottom 8:1. Each row has original image, reconstructed without latent compression, and compressed fully variants.}
+  \label{fig:subsampling_1:2_2:1_8:1}
+\end{figure*}
 
 
 
+\subsection{EXP2: Hyperprior - Training Domain and Generalization}
+In this experiment, we wanted to test how the training domain affects generalization capabilities. We are using an architecture based on \cite{balle_variational_2018}. The following formulas are used in the loss computation:
+$$R_y = -\frac{1}{P}\sum \log_2 p(\hat{y})$$
+$$R_z = -\frac{1}{P}\sum \log_2 p(\hat{z})$$
+$$D = \frac{1}{N}\sum_{i=1}^{N}(x_i - \hat{x}_i)^2$$
+$$\mathcal{L} = D + \lambda (R_y + R_z)$$
+$P$ denotes the number of input pixels, $x$ denotes the input, $\hat{y}$ denotes the quantized latent, $\hat{z}$ denotes the quantized hyper-latent, $R_y$ and $R_z$ denote the rate components, $D$ denotes the distortion, and $\lambda$ is the rate-distortion tradeoff coefficient. We use \textit{CompressAI}\cite{begaint2020compressai} implementations of \textit{GDN}, \textit{EntropyBottleneck}, \textit{GaussianConditional}. The architecture diagram is presented in figure \ref{fig:hyperprior_arch}.
 
+We prepare three training scenarios based on the training data and the size of the model:
+\begin{enumerate}
+    \item \textit{Minecraft dataset}, $N$ = 64, $M$ = 96
+    \item \textit{DF2K dataset}, $N$ = 64, $M$ = 96
+    \item \textit{Minecraft + DF2K combined dataset}, $N$ = 128, $M$ = 192
+\end{enumerate}
+In each scenario, we trained four models with different values of the rate loss coefficient $\lambda \in \{0.01, 0.02, 0.05, 0.1\}$. In scenarios 1) and 2) we trained for $68,000$ and $58,000$ iterations, respectively, while in scenario 3) we trained models for $236,000$ iterations. All training was carried out with the batch size of 8 and random patches of 256$\times$256. Training of all models took about 25 hours on \textit{RTX 4090}.
+We compare trained models using Rate-Distortion curves on the Minecraft dataset, and the DF2K dataset. The results can be seen in figures \ref{fig:hyperprior_rd_df2k} and \ref{fig:hyperprior_rd_minecraft}. We can see that the domain specific models did better on their domain, but still got dominated by the larger models trained on all data. However, the difference was minimal; this could signify that on the limited training data smaller models can be competitive. Interestingly, two models from each scenario achieved a better result than the JPEG baseline in terms of compression, on the Minecraft Screenshots dataset, but not on the DF2K dataset. We can also see that all models are closer to the JPEG baseline in terms of \textit{MS-SSIM} than \textit{PSNR}, even though the Mean Square Error is used for the distortion loss during training.
 
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/hyperprior.pdf}
+  \caption{EXP2: Model architecture based on \cite{balle_variational_2018}. where \textit{c} denotes the number of input and output filters, and \textit{convT2d} denotes convolution transpose. \textit{GDN}, \textit{EntropyBottleneck} and \textit{GaussianConditional} implementations come from \textit{CompressAI}\cite{begaint2020compressai}.}
+  \label{fig:hyperprior_arch}
+\end{figure*}
 
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/rd_curve_df2k.pdf}
+  \caption{EXP2: Rate-Distortion comparisons between scenarios on the DF2K dataset.}
+  \label{fig:hyperprior_rd_df2k}
+\end{figure*}
 
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/rd_curve_minecraft.pdf}
+  \caption{EXP2: Rate-Distortion comparisons between scenarios on the Minecraft Screenshots dataset.}
+  \label{fig:hyperprior_rd_minecraft}
+\end{figure*}
 
+% \begin{figure*}[p]
+%   \centering
+%   \includegraphics[width=1\textwidth]{paper/data/hyperprior_combined_0002_minecraft.png}
+%   \caption{EXP2: Rate-Distortion comparisons between scenarios on the Minecraft Screenshots dataset.}
+%   \label{fig:hyperprior_result1}
+% \end{figure*}
 
-
-
-
-
-
-
-
-%\section{Conclusion}
-%Model based compression requires more processing power at inference, also showing differences %between architectures, depending on whether a CPU or GPU is used \cite{cheng_deep_2018}... 
-
-
-\section{Future Work}
-We aim to explore modeling a size-agnostic architecture for image compression that would work for varying image sizes, with the latent vector changing in size as a result. We consider using a fully convolutional network, which would be trained on smaller slices of, for example, 256x256 pixels, to make the model learn compression quickly on a large number of examples. During inference, images of various sizes would be compressed and examined \cite{balle_end--end_2017} \cite{townsend_hilloc_2019}.
-
-To improve the rate–distortion tradeoff, a hyper-encoder block can be trained to output a hyperprior which, when provided to the entropy coder alongside the latent vector, enables it to differentiate between fine-grained textures and monotone structures, thereby reducing coding entropy and allowing lower distortion at a given bitrate \cite{balle_variational_2018}.
-
-Alternatively, replacing the PCA rotation and quantization stage of our reproduced base model inspired by \cite{cheng_deep_2018} with a vector quantization (VQ) bottleneck \cite{oord_neural_2018} could allow quantization to be optimized jointly with the rest of the model. Furthermore, the PCA rotation would become redundant, as the codebook could learn optimal discrete representations directly. The resulting bitstream would consist of integer codebook indices rather than quantized floats, simplifying the entropy coding stage.
-
-As human vision is more sensitive to changes in brightness than to changes in color, by converting our images to YCbCr format, we could implement chroma subsampling. Full resolution would only be given to the luminance channel, with the chroma channels downsampled \cite{prativadibhayankaram_study_2024}.
-
-Most images contain only a handful of regions of interest. Focusing the processing power on those areas and spending less on the background could yield performance improvements, although with the model architecture rising in complexity \cite{tao_adanic_2023}.
+% \section{Conclusion}
+% Model based compression requires more processing power at inference, also showing
+% differences between architectures, depending on whether a CPU or GPU is used
+% \cite{cheng_deep_2018}...
 
 
 \section*{Source Code}
