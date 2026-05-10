@@ -271,7 +271,8 @@ def train_model(datamodule, experiment_name, epochs, learning_rate, lambda_, N=6
     trainer = pl.Trainer(
         max_epochs=epochs,
         accelerator="auto",
-        precision="bf16-mixed",
+        #precision="bf16-mixed",
+        precision="32-true",
         callbacks=[checkpoint_callback, early_stop_callback],
         logger=csv_logger,
     )
