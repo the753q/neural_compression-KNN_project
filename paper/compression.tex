@@ -175,7 +175,7 @@ Based on the decompressed image, the MSE, PSNR, and SSIM metrics are calculated.
 We have implemented a model heavily inspired by the architecture from \cite{cheng_deep_2018}. We work with normalized YCbCr images and process each channel separately, so a 128×128×1 patch is the input to the encoder. We perform PCA rotations, then apply a simple quantization formula as mentioned in the paper. We quantize the 3 latent vectors, one per channel in YCbCr, as well as 3 rotation matrices from PCA. This quantized data is then encoded using Huffman coding. The model's focus is on producing low-entropy latents after the PCA rotation.
 Each image is sliced into parts, with each part compressed individually. After subsequent decompression, the slices are merged together to reconstruct the original image. The slicing algorithm creates non-overlapping slices that, during compression, leave the model without the context of the surrounding area.
 
-Current PCA, quantization pipeline \cite{cheng_deep_2018}:
+Base model's PCA, quantization pipeline \cite{cheng_deep_2018}:
 
 \begin{enumerate}
     \item \hfill $\vphantom{\dfrac{y'}{2^{B-1}}} y_{\mathrm{rot}} = U^T y$ \hfill\null
@@ -190,37 +190,9 @@ Here $y$ is the latent vector, encoder output; $\hat{y}$ is the recovered latent
 This section provides the results of the tests performed on the described experiments, as measured by metrics relevant to learned image compression.
 
 \subsection{Base Model}
-The base model inspired by \cite{cheng_deep_2018} was modified across various experiments, and its performance was measured. Here, we report the achieved results.
+We evaluated the performance of the base model inspired by paper \cite{cheng_deep_2018} on a dataset of 30 diverse images. For this evaluation, full-resolution images are seamlessly partitioned into non-overlapping $128 \times 128$ patches, processed independently by our compression model, and subsequently reassembled. A sample compressed image can be seen in Figure \ref{fig:compressed_image_patch_outlines}, with square outlines visible, marking the boundaries of the individual patches.
+We benchmarked our approach against the standard JPEG compression algorithm (configured at a high-quality setting of 95). We measured the compression ratio, bits per pixel (bpp), and reconstruction quality (PSNR, SSIM, and MSE). To provide a granular view of the compression tradeoffs, Table~\ref{tab:sample_images} details the performance on a representative subset of individual test images.
 
-\paragraph{Patch-Level Evaluation}
-To understand the intrinsic reconstruction capabilities of our architecture and the degradation introduced by the compression of the bottleneck vector step, we first evaluated the model on $128 \times 128$ image patches. This evaluation was performed over a validation set of 50 batches. 
-We compared two specific configurations: reconstruction with and without the bottleneck compression.
-The quantitative results are summarized in Table ~\ref{tab:patch_metrics}.
-
-\begin{table}[h]
-\centering
-\caption{Patch-Level Reconstruction Metrics}
-\label{tab:patch_metrics}
-\begin{tabular}{lccc}
-\hline
-\textbf{Configuration} & \textbf{MSE} & \textbf{PSNR (dB)} & \textbf{SSIM} \\ \hline
-Bottleneck & 0.004155 & 23.81 & 0.7130 \\
-Compressed Bottleneck     & 0.004697 & 23.28 & 0.6785 \\ \hline
-\end{tabular}
-\end{table}
-
-As expected, introducing the bottleneck compression pipeline, and especially the quantization step, results in a slight decrease in image fidelity, as can be seen in Figure \ref{fig:patches_bottleneck_compression_comparison}. The PSNR drops by approximately 0.53 dB, and the SSIM decreases from 0.7130 to 0.6785. However, this degradation is relatively modest, indicating that our learned representations are robust for the use of bottleneck file size reduction.
-
-\begin{figure*}[p]
-  \centering
-  \includegraphics[width=\textwidth]{paper/data/basic_eval_comparison.png}
-  \caption{Bottleneck compression comparison. The first row shows the original patch. The second and third rows show the reconstructed bottleneck without and with compression, respectively.}
-  \label{fig:patches_bottleneck_compression_comparison}
-\end{figure*}
-
-\paragraph{Full-Image Compression Performance}
-While patch-level metrics are informative, practical applications require compressing arbitrary-sized full images. We evaluated our model's end-to-end performance on a dataset of 30 diverse images. For this evaluation, full-resolution images are seamlessly partitioned into non-overlapping $128 \times 128$ patches, processed independently by our compression model, and subsequently reassembled. A sample compressed image can be seen in Figure \ref{fig:compressed_image_patch_outlines}, with square outlines visible, marking the boundaries of the individual patches.
-We benchmarked our approach against the standard JPEG compression algorithm (configured at a high-quality setting of 95). We measured the compression ratio, bits per pixel (bpp), and reconstruction quality (PSNR, SSIM, and MSE). Average results are provided in Table \ref{tab:full_metrics}.
 
 \begin{figure*}[p]
   \centering
@@ -228,20 +200,6 @@ We benchmarked our approach against the standard JPEG compression algorithm (con
   \caption{Compressed image. Unintended outlines marking the individual patches can be seen. As the patches are non-overlapping and processed independently, the model can never understand the wider context of the whole image.}
   \label{fig:compressed_image_patch_outlines}
 \end{figure*}
-
-\begin{table}[h]
-\centering
-\caption{Average Full-Image Compression Metrics}
-\label{tab:full_metrics}
-\begin{tabular}{lccc}
-\hline
-\textbf{Method} & \textbf{MSE} & \textbf{PSNR (dB)} & \textbf{SSIM} \\ \hline
-Ours            & 0.004554 & 25.18 & 0.6670 \\
-JPEG (Q=95)     & 0.000227 & 38.57 & 0.9713 \\ \hline
-\end{tabular}
-\end{table}
-
-Furthermore, to provide a granular view of the compression tradeoffs, Table~\ref{tab:sample_images} details the performance on a representative subset of individual test images.
 
 \begin{table*}[p]
 \centering
@@ -261,11 +219,6 @@ img\_4 & $500 \times 375$ & 3.69 & 412 $\rightarrow$ 84 & 4.89x & 3.48x & 22.21 
 Our evaluation demonstrates that the proposed implementation achieves distinctive file size reductions. On average, the compression factor ranges from 2.9x to 4.9x. For several images, our model achieves a higher compression ratio than the JPEG baseline at a quality level of 95. 
 
 However, the implemented architecture fails when compared to the JPEG baseline, which currently outperforms our approach in terms of standard distortion metrics (PSNR and SSIM). The average PSNR for our model across the dataset is 25.18 dB, compared to 38.57 dB for JPEG. 
-
-
-
-
-
 
 \subsection{EXP1: Base Model Modifications}
 In this part, we present experiments targeted at finding patterns between compression model variants, allowing us to understand how certain changes influence the models.
@@ -332,7 +285,7 @@ We prepare three training scenarios based on the training data and the size of t
     \item \textit{Minecraft + DF2K combined dataset}, $N$ = 128, $M$ = 192
 \end{enumerate}
 In each scenario, we trained four models with different values of the rate loss coefficient $\lambda \in \{0.01, 0.02, 0.05, 0.1\}$. In scenarios 1) and 2) we trained for $68,000$ and $58,000$ iterations, respectively, while in scenario 3) we trained models for $236,000$ iterations. All training was carried out with the batch size of 8 and random patches of 256$\times$256. Training of all models took about 25 hours on \textit{RTX 4090}.
-We compare trained models using Rate-Distortion curves on the Minecraft dataset, and the DF2K dataset. The results can be seen in figures \ref{fig:hyperprior_rd_df2k} and \ref{fig:hyperprior_rd_minecraft}. We can see that the domain specific models did better on their domain, but still got dominated by the larger models trained on all data. However, the difference was minimal; this could signify that on the limited training data smaller models can be competitive. Interestingly, two models from each scenario achieved a better result than the JPEG baseline in terms of compression, on the Minecraft Screenshots dataset, but not on the DF2K dataset. We can also see that all models are closer to the JPEG baseline in terms of \textit{MS-SSIM} than \textit{PSNR}, even though the Mean Square Error is used for the distortion loss during training.
+We compare trained models using Rate-Distortion curves on the Minecraft dataset, and the DF2K dataset. The results can be seen in figures \ref{fig:hyperprior_rd_df2k} and \ref{fig:hyperprior_rd_minecraft}. We can see that the domain specific models did better on their domain, but still got dominated by the larger models trained on all data. However, the difference was minimal; this could signify that on the limited training data smaller models can be competitive. Interestingly, two models from each scenario achieved a better result than the JPEG baseline in terms of compression, on the Minecraft Screenshots dataset, but not on the DF2K dataset. We can also see that all models are closer to the JPEG baseline in terms of \textit{MS-SSIM} than \textit{PSNR}, even though the Mean Square Error is used for the distortion loss during training. An example of a compressed image can be seen in figure \ref{fig:hyperprior_result1}.
 
 \begin{figure*}[p]
   \centering
@@ -355,18 +308,57 @@ We compare trained models using Rate-Distortion curves on the Minecraft dataset,
   \label{fig:hyperprior_rd_minecraft}
 \end{figure*}
 
-% \begin{figure*}[p]
-%   \centering
-%   \includegraphics[width=1\textwidth]{paper/data/hyperprior_combined_0002_minecraft.png}
-%   \caption{EXP2: Rate-Distortion comparisons between scenarios on the Minecraft Screenshots dataset.}
-%   \label{fig:hyperprior_result1}
-% \end{figure*}
+ \begin{figure*}[p]
+   \centering
+   \includegraphics[width=1\textwidth]{paper/data/hyperprior_combined_0002_minecraft.png}
+   \caption{EXP2: Minecraft screenshot compressed with the model trained on the DF2K and Minecrafts datasets combined, with $\lambda = 0.002$. Left orignal, right compressed (0.870 bpp).}
+   \label{fig:hyperprior_result1}
+\end{figure*}
 
-% \section{Conclusion}
-% Model based compression requires more processing power at inference, also showing
-% differences between architectures, depending on whether a CPU or GPU is used
-% \cite{cheng_deep_2018}...
 
+\subsection{EXP3: Layer Experiments}
+
+These experiments primarily focused on various modifications to the layers within the original architecture. We developed several models by either adding or removing layers. In some instances, we explored different quantities of convolutional layers altering with PReLU layers. Additionally, we investigated the use of an average pooling method for downsizing images within the neural network instead of increasing the stride for the kernel movement.
+
+The foundational architecture employed was DCAL\_2018, which was developed based on the original model presented in \cite{cheng_deep_2018}. We successfully developed four functional architectures:
+\begin{itemize}
+    \item \textit{DCAL\_simple}: In this version, one convolutional layer and one PReLU layer were removed from each block.
+    \item \textit{DCAL\_extended}: An additional block was implemented, featuring duplicated layers.
+    \item \textit{DCAL\_triple}: One convolutional layer and one PReLU layer were added to each block.
+    \item \textit{DCAL\_pool}: The stride for kernel movement was reduced and an average pooling layer was introduced as an alternative.
+\end{itemize}
+In the mentioned architectures, we have experimented with the number of channels, Y/Cb/Cr versus RGB training and various patch sizes.
+
+Extended architectures were inclined to decrease the quality of the reconstructed image. They had lower bits per pixel metrics. The tendency of the training was to get stuck in the local minimum, which resulted in averaging the color of the training set. The reconstructed images were solid gray in the most cases. Those architectures were unusable for the real usage.
+
+On the other hand, the simplified model seems promising and it was producing better result than the original model. The bits per pixel in the compressed image were approximately reaching half of the value. The quality of the reconstructed images was slightly higher.
+
+Even though the experiments with the deeper architecture did not yield favorable results in comparison, it is possible that these architectures could perform better with some minor modifications that were not explored in our experiments. Perhaps the optimal configuration, which might benefit from additional layers, has not yet been identified. The outcomes for the developed models are presented in figure \ref{fig:dcal-architectures-results}. Example of the image compressed with the DCAL\_simple model is in figure \ref{fig:dcal-architectures-results-dcal-simple}.
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/dcal_architecture.png}
+  \caption{EXP3: Rate-Distortion comparisons between various architecture changes.}
+  \label{fig:dcal-architectures-results}
+\end{figure*}
+
+\begin{figure*}[p]
+  \centering
+  \includegraphics[width=1\textwidth]{paper/data/dcal_architecture_image.png}
+  \caption{EXP3: DCAL\_simple comparison of original image, base model and full-resolution modification.}
+  \label{fig:dcal-architectures-results-dcal-simple}
+\end{figure*}
+
+\section{Conclusion}
+In this work, we explored learned image compression based on CAE and compared several architectural choices against a JPEG baseline. The initial model, inspired by prior work in the area, demonstrated that NNs can produce compact latent representations and achieve reductions in file size. However, the baseline implementation did not outperform JPEG in metrics such as PSNR and SSIM. Its patch-based processing also introduced visible boundary artifacts.
+
+The modifications performed helped identify which parts of the compression pipeline yielded the largest improvements. Replacing patch processing with full-resolution inference removed the grid-like visual artifacts. The color-space experiments showed that YCbCr proves useful when structure preservation is prioritized. A 2:1 subsampling ratio reduced the bitrate even more, with only a small quality loss, while stronger subsampling introduced visible color degradation. LAB color space produced mixed results: it sometimes appeared visually closer in color but did not improve the measured SSIM scores.
+
+Models trained with a scale hyperprior were able to approach, and in some cases surpass JPEG on the Minecraft dataset, particularly in terms of rate-distortion behavior. The comparison between domain-specific and combined training data further showed that the training distribution strongly affects compression performance. Domain-specific models can be competitive in limited and regular image domains, but the larger model trained on combined data achieved the best overall performance.
+
+The layer-architecture experiments also showed that increased depth alone is not sufficient for better compression. Deeper variants often became unstable or converged to poor reconstructions, while the simplified model achieved a lower BPP score and slightly better reconstruction quality than the original architecture. This suggests that compact and stable architectures may be preferable to larger ones when training time, dataset size, and optimization stability are limited.
+
+The experiments confirm that learned image compression is a promising yet sensitive approach. Neural codecs may outperform traditional methods in selected domains, but their performance depends heavily on architecture, entropy modeling, color representation, training data, and optimization strategy.
 
 \section*{Source Code}
 The implementation can be accessed via a public GitHub repository at
